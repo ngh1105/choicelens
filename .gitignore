@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+.next/
+dist/
+build/
+coverage/
+
+# env
+.env
+.env.*
+!.env.example
+
+# local tooling
+.superpowers/
+.DS_Store
+Thumbs.db
