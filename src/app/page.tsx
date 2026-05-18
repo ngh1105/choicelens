@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ExternalLink,
   Plus,
@@ -16,26 +16,74 @@ import {
   DEFAULT_PRIORITIES,
   PRIORITY_LABELS,
   makeOptionId,
-  runComparison,
   type AgentName,
+  type ComparisonInput,
   type ComparisonResult,
   type OptionInput,
   type Priority,
   type PriorityWeights,
   type ScoredOption,
 } from "@/lib/comparison";
-import {
-  getGenLayerService,
-  type DecisionReceipt,
-} from "@/lib/genlayer";
+import type { DecisionReceipt } from "@/lib/genlayer";
 import { isWalletConfigured } from "@/lib/wallet";
 
 interface WatchlistEntry {
   id: string;
+  comparisonId: string;
+  optionId: string;
   name: string;
   score: number;
   addedAt: string;
   payloadHash: string;
+}
+
+interface ComparisonRecord {
+  id: string;
+  createdAt: string;
+  input: ComparisonInput;
+  result: ComparisonResult;
+}
+
+interface ReceiptRecord extends DecisionReceipt {
+  comparisonId: string;
+}
+
+class ApiRequestError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = "ApiRequestError";
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function fetchJson<T>(
+  url: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetch(url, init);
+  const payload = await response.json().catch(() => null) as unknown;
+  if (!response.ok) {
+    const detail = isRecord(payload)
+      ? payload.message ?? payload.error
+      : null;
+    throw new ApiRequestError(
+      response.status,
+      typeof detail === "string"
+        ? detail
+        : `Request failed (${response.status})`,
+    );
+  }
+  return payload as T;
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
 }
 
 const STARTER_OPTIONS: OptionInput[] = [
@@ -61,15 +109,74 @@ export default function HomePage() {
     useState<PriorityWeights>(DEFAULT_PRIORITIES);
   const [mustHaves, setMustHaves] = useState<string>("");
   const [dealBreakers, setDealBreakers] = useState<string>("");
+  const [comparisonId, setComparisonId] = useState<string | null>(null);
   const [result, setResult] = useState<ComparisonResult | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
-  const [receipt, setReceipt] = useState<DecisionReceipt | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptRecord | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isComparing, setIsComparing] = useState<boolean>(false);
+  const [isSavingWatchlist, setIsSavingWatchlist] = useState<boolean>(false);
+  const [removingWatchId, setRemovingWatchId] = useState<string | null>(null);
+  const [isBuildingReceipt, setIsBuildingReceipt] = useState<boolean>(false);
 
   const validOptions = useMemo(
     () => options.filter((o) => o.name.trim().length > 0),
     [options],
   );
   const canCompare = validOptions.length >= 2;
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadPersistedData() {
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const [comparisonPayload, watchlistPayload] = await Promise.all([
+          fetchJson<{ comparisons: ComparisonRecord[] }>("/api/comparisons"),
+          fetchJson<{ watchlist: WatchlistEntry[] }>("/api/watchlist"),
+        ]);
+        if (ignore) return;
+
+        const latest = comparisonPayload.comparisons[0] ?? null;
+        let latestReceipt: ReceiptRecord | null = null;
+        if (latest) {
+          try {
+            const receiptPayload = await fetchJson<{ receipt: ReceiptRecord }>(
+              `/api/comparisons/${latest.id}/receipt`,
+            );
+            latestReceipt = receiptPayload.receipt;
+          } catch (err) {
+            if (!(err instanceof ApiRequestError && err.status === 404)) {
+              throw err;
+            }
+          }
+        }
+        if (ignore) return;
+
+        setComparisonId(latest?.id ?? null);
+        setResult(latest?.result ?? null);
+        setReceipt(latestReceipt);
+        setWatchlist(watchlistPayload.watchlist);
+      } catch (err) {
+        if (!ignore) {
+          setLoadError(errorMessage(err, "Unable to load saved decisions."));
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadPersistedData();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   function updateOption(id: string, patch: Partial<OptionInput>) {
     setOptions((prev) =>
@@ -95,17 +202,34 @@ export default function HomePage() {
     setPriorities((prev) => ({ ...prev, [p]: value }));
   }
 
-  function handleCompare() {
+  async function handleCompare() {
     if (!canCompare) return;
-    const next = runComparison({
+    const input: ComparisonInput = {
       prompt,
       options: validOptions,
       priorities,
       mustHaves,
       dealBreakers,
-    });
-    setResult(next);
-    setReceipt(null);
+    };
+    setIsComparing(true);
+    setActionError(null);
+    try {
+      const payload = await fetchJson<{ comparison: ComparisonRecord }>(
+        "/api/comparisons",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        },
+      );
+      setComparisonId(payload.comparison.id);
+      setResult(payload.comparison.result);
+      setReceipt(null);
+    } catch (err) {
+      setActionError(errorMessage(err, "Unable to run comparison."));
+    } finally {
+      setIsComparing(false);
+    }
   }
 
   function handleReset() {
@@ -113,36 +237,72 @@ export default function HomePage() {
     setPriorities(DEFAULT_PRIORITIES);
     setMustHaves("");
     setDealBreakers("");
+    setComparisonId(null);
     setResult(null);
     setReceipt(null);
+    setActionError(null);
   }
 
-  function handleSaveTopPick() {
-    if (!result) return;
-    const top = result.topPick;
-    setWatchlist((prev) => {
-      if (prev.some((w) => w.payloadHash === result.receiptPayloadHash)) {
-        return prev;
+  async function handleSaveTopPick() {
+    if (!result || !comparisonId) return;
+    setIsSavingWatchlist(true);
+    setActionError(null);
+    try {
+      const payload = await fetchJson<{ entry: WatchlistEntry }>(
+        `/api/comparisons/${comparisonId}/watchlist`,
+        { method: "POST" },
+      );
+      setWatchlist((prev) => {
+        if (prev.some((w) => w.id === payload.entry.id)) {
+          return prev;
+        }
+        return [
+          payload.entry,
+          ...prev.filter((w) => w.payloadHash !== payload.entry.payloadHash),
+        ];
+      });
+    } catch (err) {
+      setActionError(errorMessage(err, "Unable to save top pick."));
+    } finally {
+      setIsSavingWatchlist(false);
+    }
+  }
+
+  async function handleRemoveWatch(id: string) {
+    setRemovingWatchId(id);
+    setActionError(null);
+    try {
+      await fetchJson<{ removed: true }>(`/api/watchlist/${id}`, {
+        method: "DELETE",
+      });
+      setWatchlist((prev) => prev.filter((w) => w.id !== id));
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 404) {
+        setWatchlist((prev) => prev.filter((w) => w.id !== id));
+        setActionError("That watchlist item was already removed.");
+      } else {
+        setActionError(errorMessage(err, "Unable to remove watchlist item."));
       }
-      const entry: WatchlistEntry = {
-        id: `w-${result.receiptPayloadHash}`,
-        name: top.name,
-        score: top.finalScore,
-        addedAt: new Date().toISOString(),
-        payloadHash: result.receiptPayloadHash,
-      };
-      return [entry, ...prev];
-    });
+    } finally {
+      setRemovingWatchId(null);
+    }
   }
 
-  function handleRemoveWatch(id: string) {
-    setWatchlist((prev) => prev.filter((w) => w.id !== id));
-  }
-
-  function handleBuildReceipt() {
-    if (!result) return;
-    const built = getGenLayerService().buildReceipt(result);
-    setReceipt(built);
+  async function handleBuildReceipt() {
+    if (!result || !comparisonId) return;
+    setIsBuildingReceipt(true);
+    setActionError(null);
+    try {
+      const payload = await fetchJson<{ receipt: ReceiptRecord }>(
+        `/api/comparisons/${comparisonId}/receipt`,
+        { method: "POST" },
+      );
+      setReceipt(payload.receipt);
+    } catch (err) {
+      setActionError(errorMessage(err, "Unable to build receipt."));
+    } finally {
+      setIsBuildingReceipt(false);
+    }
   }
 
   return (
@@ -181,7 +341,29 @@ export default function HomePage() {
             onCompare={handleCompare}
             onReset={handleReset}
             canCompare={canCompare}
+            isComparing={isComparing}
           />
+          {isLoading ? (
+            <div className="panel">
+              <div className="panel-body">
+                <div className="section-helper">Loading saved decisions...</div>
+              </div>
+            </div>
+          ) : null}
+          {loadError ? (
+            <div className="panel">
+              <div className="panel-body">
+                <div className="section-helper" role="alert">{loadError}</div>
+              </div>
+            </div>
+          ) : null}
+          {actionError ? (
+            <div className="panel">
+              <div className="panel-body">
+                <div className="section-helper" role="alert">{actionError}</div>
+              </div>
+            </div>
+          ) : null}
           <Priorities priorities={priorities} onChange={setPriority} />
           <Constraints
             mustHaves={mustHaves}
@@ -189,18 +371,26 @@ export default function HomePage() {
             onMustHaves={setMustHaves}
             onDealBreakers={setDealBreakers}
           />
-          <ResultView result={result} onSave={handleSaveTopPick} />
+          <ResultView
+            result={result}
+            onSave={handleSaveTopPick}
+            canSave={Boolean(comparisonId)}
+            isSaving={isSavingWatchlist}
+          />
         </section>
 
         <aside className="panel-stack">
           <WatchlistPanel
             watchlist={watchlist}
             onRemove={handleRemoveWatch}
+            removingId={removingWatchId}
           />
           <ReceiptPanel
             result={result}
             receipt={receipt}
             onBuild={handleBuildReceipt}
+            canBuild={Boolean(comparisonId)}
+            isBuilding={isBuildingReceipt}
           />
         </aside>
       </main>
@@ -218,6 +408,7 @@ interface ComposerProps {
   onCompare: () => void;
   onReset: () => void;
   canCompare: boolean;
+  isComparing: boolean;
 }
 
 function Composer(props: ComposerProps) {
@@ -231,6 +422,7 @@ function Composer(props: ComposerProps) {
     onCompare,
     onReset,
     canCompare,
+    isComparing,
   } = props;
 
   return (
@@ -325,10 +517,10 @@ function Composer(props: ComposerProps) {
             className="btn btn-primary"
             type="button"
             onClick={onCompare}
-            disabled={!canCompare}
+            disabled={!canCompare || isComparing}
           >
             <Sparkles size={14} />
-            Run comparison
+            {isComparing ? "Running..." : "Run comparison"}
           </button>
         </div>
       </div>
@@ -430,9 +622,11 @@ function Constraints({
 interface ResultViewProps {
   result: ComparisonResult | null;
   onSave: () => void;
+  canSave: boolean;
+  isSaving: boolean;
 }
 
-function ResultView({ result, onSave }: ResultViewProps) {
+function ResultView({ result, onSave, canSave, isSaving }: ResultViewProps) {
   return (
     <div className="panel">
       <div className="panel-header">
@@ -449,7 +643,12 @@ function ResultView({ result, onSave }: ResultViewProps) {
           </div>
         ) : (
           <>
-            <TopPick option={result.topPick} onSave={onSave} />
+            <TopPick
+              option={result.topPick}
+              onSave={onSave}
+              canSave={canSave}
+              isSaving={isSaving}
+            />
             <ScoreTable shortlist={result.shortlist} topId={result.topPick.id} />
             <Signals
               confidence={result.signals.confidence}
@@ -466,9 +665,13 @@ function ResultView({ result, onSave }: ResultViewProps) {
 function TopPick({
   option,
   onSave,
+  canSave,
+  isSaving,
 }: {
   option: ScoredOption;
   onSave: () => void;
+  canSave: boolean;
+  isSaving: boolean;
 }) {
   return (
     <div className="top-pick">
@@ -485,9 +688,14 @@ function TopPick({
         Strongest combined read across the {AGENT_ORDER.length} analysts.
       </div>
       <div className="row-actions">
-        <button className="btn" type="button" onClick={onSave}>
+        <button
+          className="btn"
+          type="button"
+          onClick={onSave}
+          disabled={!canSave || isSaving}
+        >
           <Bookmark size={14} />
-          Save to watchlist
+          {isSaving ? "Saving..." : "Save to watchlist"}
         </button>
         {option.url ? (
           <a
@@ -607,9 +815,14 @@ function Signals({
 interface WatchlistPanelProps {
   watchlist: WatchlistEntry[];
   onRemove: (id: string) => void;
+  removingId: string | null;
 }
 
-function WatchlistPanel({ watchlist, onRemove }: WatchlistPanelProps) {
+function WatchlistPanel({
+  watchlist,
+  onRemove,
+  removingId,
+}: WatchlistPanelProps) {
   return (
     <div className="panel">
       <div className="panel-header">
@@ -619,8 +832,7 @@ function WatchlistPanel({ watchlist, onRemove }: WatchlistPanelProps) {
       <div className="panel-body">
         {watchlist.length === 0 ? (
           <div className="watchlist-empty">
-            Save a top pick from a result to start tracking it here. V1 stores
-            this in memory; persistence ships next.
+            Save a top pick from a result to start tracking it here.
           </div>
         ) : (
           <div>
@@ -633,6 +845,7 @@ function WatchlistPanel({ watchlist, onRemove }: WatchlistPanelProps) {
                     type="button"
                     onClick={() => onRemove(item.id)}
                     aria-label="Remove from watchlist"
+                    disabled={removingId === item.id}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -652,11 +865,19 @@ function WatchlistPanel({ watchlist, onRemove }: WatchlistPanelProps) {
 
 interface ReceiptPanelProps {
   result: ComparisonResult | null;
-  receipt: DecisionReceipt | null;
+  receipt: ReceiptRecord | null;
   onBuild: () => void;
+  canBuild: boolean;
+  isBuilding: boolean;
 }
 
-function ReceiptPanel({ result, receipt, onBuild }: ReceiptPanelProps) {
+function ReceiptPanel({
+  result,
+  receipt,
+  onBuild,
+  canBuild,
+  isBuilding,
+}: ReceiptPanelProps) {
   return (
     <div className="panel">
       <div className="panel-header">
@@ -674,10 +895,10 @@ function ReceiptPanel({ result, receipt, onBuild }: ReceiptPanelProps) {
             className="btn"
             type="button"
             onClick={onBuild}
-            disabled={!result}
+            disabled={!result || !canBuild || isBuilding}
           >
             <FileSignature size={14} />
-            Build receipt
+            {isBuilding ? "Building..." : "Build receipt"}
           </button>
         </div>
         {receipt ? (
