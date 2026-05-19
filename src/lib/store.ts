@@ -1,8 +1,7 @@
-import { promises as fs } from "fs";
-import path from "path";
-import { randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 import type { ComparisonInput, ComparisonResult } from "./comparison";
-import type { DecisionReceipt } from "./genlayer";
+import type { DecisionReceipt, ReceiptStatus } from "./genlayer";
+import { getDefaultUserId, prisma } from "./db";
 
 export interface ComparisonRecord {
   id: string;
@@ -25,200 +24,6 @@ export interface ReceiptRecord extends DecisionReceipt {
   comparisonId: string;
 }
 
-interface StoreShape {
-  comparisons: ComparisonRecord[];
-  watchlist: WatchlistRecord[];
-  receipts: ReceiptRecord[];
-}
-
-const EMPTY: StoreShape = {
-  comparisons: [],
-  watchlist: [],
-  receipts: [],
-};
-
-const DATA_DIR = path.join(process.cwd(), ".data");
-const DATA_FILE = path.join(DATA_DIR, "choicelens.json");
-
-let queue: Promise<unknown> = Promise.resolve();
-
-function serialize<T>(fn: () => Promise<T>): Promise<T> {
-  const next = queue.then(fn, fn);
-  queue = next.catch(() => undefined);
-  return next;
-}
-
-async function ensureDir(): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-}
-
-function isStoreShape(value: unknown): value is StoreShape {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
-  return (
-    Array.isArray(v.comparisons) &&
-    Array.isArray(v.watchlist) &&
-    Array.isArray(v.receipts)
-  );
-}
-
-async function readRaw(): Promise<StoreShape> {
-  try {
-    const buf = await fs.readFile(DATA_FILE, "utf8");
-    const parsed = JSON.parse(buf) as unknown;
-    if (isStoreShape(parsed)) {
-      return parsed;
-    }
-    return { ...EMPTY };
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException)?.code;
-    if (code === "ENOENT") {
-      return { ...EMPTY };
-    }
-    if (err instanceof SyntaxError) {
-      return { ...EMPTY };
-    }
-    throw err;
-  }
-}
-
-async function writeRaw(state: StoreShape): Promise<void> {
-  await ensureDir();
-  const tmp = `${DATA_FILE}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(state, null, 2), "utf8");
-  await fs.rename(tmp, DATA_FILE);
-}
-
-async function withState<T>(
-  fn: (state: StoreShape) => Promise<{ state: StoreShape; value: T }> | { state: StoreShape; value: T },
-): Promise<T> {
-  return serialize(async () => {
-    const state = await readRaw();
-    const next = await fn(state);
-    await writeRaw(next.state);
-    return next.value;
-  });
-}
-
-async function readState(): Promise<StoreShape> {
-  return serialize(() => readRaw());
-}
-
-export async function listComparisons(): Promise<ComparisonRecord[]> {
-  const state = await readState();
-  return [...state.comparisons].sort((a, b) =>
-    a.createdAt < b.createdAt ? 1 : -1,
-  );
-}
-
-export async function getComparison(
-  id: string,
-): Promise<ComparisonRecord | null> {
-  const state = await readState();
-  return state.comparisons.find((c) => c.id === id) ?? null;
-}
-
-export async function saveComparison(args: {
-  input: ComparisonInput;
-  result: ComparisonResult;
-}): Promise<ComparisonRecord> {
-  const record: ComparisonRecord = {
-    id: randomUUID(),
-    createdAt: new Date().toISOString(),
-    input: args.input,
-    result: args.result,
-  };
-  return withState((state) => ({
-    state: { ...state, comparisons: [record, ...state.comparisons] },
-    value: record,
-  }));
-}
-
-export async function listWatchlist(): Promise<WatchlistRecord[]> {
-  const state = await readState();
-  return [...state.watchlist].sort((a, b) =>
-    a.addedAt < b.addedAt ? 1 : -1,
-  );
-}
-
-export async function addWatchlistEntry(args: {
-  comparisonId: string;
-}): Promise<WatchlistRecord> {
-  return withState((state) => {
-    const comparison = state.comparisons.find(
-      (c) => c.id === args.comparisonId,
-    );
-    if (!comparison) {
-      throw new StoreError("comparison_not_found", "Comparison not found");
-    }
-    const top = comparison.result.topPick;
-    const existing = state.watchlist.find(
-      (w) =>
-        w.comparisonId === comparison.id &&
-        w.payloadHash === comparison.result.receiptPayloadHash,
-    );
-    if (existing) {
-      return { state, value: existing };
-    }
-    const entry: WatchlistRecord = {
-      id: randomUUID(),
-      comparisonId: comparison.id,
-      optionId: top.id,
-      name: top.name,
-      score: top.finalScore,
-      payloadHash: comparison.result.receiptPayloadHash,
-      addedAt: new Date().toISOString(),
-    };
-    return {
-      state: { ...state, watchlist: [entry, ...state.watchlist] },
-      value: entry,
-    };
-  });
-}
-
-export async function removeWatchlistEntry(id: string): Promise<boolean> {
-  return withState((state) => {
-    const next = state.watchlist.filter((w) => w.id !== id);
-    const removed = next.length !== state.watchlist.length;
-    return {
-      state: { ...state, watchlist: next },
-      value: removed,
-    };
-  });
-}
-
-export async function saveReceipt(args: {
-  comparisonId: string;
-  receipt: DecisionReceipt;
-}): Promise<ReceiptRecord> {
-  return withState((state) => {
-    const comparison = state.comparisons.find(
-      (c) => c.id === args.comparisonId,
-    );
-    if (!comparison) {
-      throw new StoreError("comparison_not_found", "Comparison not found");
-    }
-    const record: ReceiptRecord = {
-      ...args.receipt,
-      comparisonId: comparison.id,
-    };
-    const filtered = state.receipts.filter(
-      (r) => r.comparisonId !== comparison.id,
-    );
-    return {
-      state: { ...state, receipts: [record, ...filtered] },
-      value: record,
-    };
-  });
-}
-
-export async function getReceiptForComparison(
-  comparisonId: string,
-): Promise<ReceiptRecord | null> {
-  const state = await readState();
-  return state.receipts.find((r) => r.comparisonId === comparisonId) ?? null;
-}
-
 export class StoreError extends Error {
   code: string;
   constructor(code: string, message: string) {
@@ -226,4 +31,211 @@ export class StoreError extends Error {
     this.code = code;
     this.name = "StoreError";
   }
+}
+
+type DbComparison = {
+  id: string;
+  createdAt: Date;
+  input: string;
+  result: string;
+};
+
+type DbWatchlist = {
+  id: string;
+  comparisonId: string;
+  optionId: string;
+  name: string;
+  score: number;
+  payloadHash: string;
+  addedAt: Date;
+};
+
+type DbReceipt = {
+  id: string;
+  comparisonId: string;
+  payloadHash: string;
+  status: string;
+  network: string;
+  contractAddress: string | null;
+  transactionHash: string | null;
+  createdAt: Date;
+};
+
+function toComparison(row: DbComparison): ComparisonRecord {
+  return {
+    id: row.id,
+    createdAt: row.createdAt.toISOString(),
+    input: JSON.parse(row.input) as ComparisonInput,
+    result: JSON.parse(row.result) as ComparisonResult,
+  };
+}
+
+function toWatchlist(row: DbWatchlist): WatchlistRecord {
+  return {
+    id: row.id,
+    comparisonId: row.comparisonId,
+    optionId: row.optionId,
+    name: row.name,
+    score: row.score,
+    payloadHash: row.payloadHash,
+    addedAt: row.addedAt.toISOString(),
+  };
+}
+
+function toReceipt(row: DbReceipt): ReceiptRecord {
+  return {
+    id: row.id,
+    comparisonId: row.comparisonId,
+    payloadHash: row.payloadHash,
+    status: row.status as ReceiptStatus,
+    network: row.network,
+    contractAddress: row.contractAddress,
+    transactionHash: row.transactionHash,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export async function listComparisons(): Promise<ComparisonRecord[]> {
+  const userId = await getDefaultUserId();
+  const rows = await prisma.comparison.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(toComparison);
+}
+
+export async function getComparison(
+  id: string,
+): Promise<ComparisonRecord | null> {
+  const userId = await getDefaultUserId();
+  const row = await prisma.comparison.findFirst({ where: { id, userId } });
+  return row ? toComparison(row) : null;
+}
+
+export async function saveComparison(args: {
+  input: ComparisonInput;
+  result: ComparisonResult;
+}): Promise<ComparisonRecord> {
+  const userId = await getDefaultUserId();
+  const row = await prisma.comparison.create({
+    data: {
+      userId,
+      input: JSON.stringify(args.input),
+      result: JSON.stringify(args.result),
+    },
+  });
+  return toComparison(row);
+}
+
+export async function listWatchlist(): Promise<WatchlistRecord[]> {
+  const userId = await getDefaultUserId();
+  const rows = await prisma.watchlistEntry.findMany({
+    where: { userId },
+    orderBy: { addedAt: "desc" },
+  });
+  return rows.map(toWatchlist);
+}
+
+export async function addWatchlistEntry(args: {
+  comparisonId: string;
+}): Promise<WatchlistRecord> {
+  const userId = await getDefaultUserId();
+  const comparison = await prisma.comparison.findFirst({
+    where: { id: args.comparisonId, userId },
+  });
+  if (!comparison) {
+    throw new StoreError("comparison_not_found", "Comparison not found");
+  }
+  const result = JSON.parse(comparison.result) as ComparisonResult;
+  const top = result.topPick;
+  const payloadHash = result.receiptPayloadHash;
+
+  try {
+    const row = await prisma.watchlistEntry.create({
+      data: {
+        userId,
+        comparisonId: comparison.id,
+        optionId: top.id,
+        name: top.name,
+        score: top.finalScore,
+        payloadHash,
+      },
+    });
+    return toWatchlist(row);
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      const existing = await prisma.watchlistEntry.findUnique({
+        where: {
+          comparisonId_payloadHash: {
+            comparisonId: comparison.id,
+            payloadHash,
+          },
+        },
+      });
+      if (existing) return toWatchlist(existing);
+    }
+    throw err;
+  }
+}
+
+export async function removeWatchlistEntry(id: string): Promise<boolean> {
+  const userId = await getDefaultUserId();
+  const result = await prisma.watchlistEntry.deleteMany({
+    where: { id, userId },
+  });
+  return result.count > 0;
+}
+
+export async function saveReceipt(args: {
+  comparisonId: string;
+  receipt: DecisionReceipt;
+}): Promise<ReceiptRecord> {
+  const userId = await getDefaultUserId();
+  const comparison = await prisma.comparison.findFirst({
+    where: { id: args.comparisonId, userId },
+    select: { id: true },
+  });
+  if (!comparison) {
+    throw new StoreError("comparison_not_found", "Comparison not found");
+  }
+  const r = args.receipt;
+  const row = await prisma.receipt.upsert({
+    where: { comparisonId: comparison.id },
+    create: {
+      id: r.id,
+      comparisonId: comparison.id,
+      payloadHash: r.payloadHash,
+      status: r.status,
+      network: r.network,
+      contractAddress: r.contractAddress,
+      transactionHash: r.transactionHash,
+      createdAt: new Date(r.createdAt),
+    },
+    update: {
+      payloadHash: r.payloadHash,
+      status: r.status,
+      network: r.network,
+      contractAddress: r.contractAddress,
+      transactionHash: r.transactionHash,
+    },
+  });
+  return toReceipt(row);
+}
+
+export async function getReceiptForComparison(
+  comparisonId: string,
+): Promise<ReceiptRecord | null> {
+  const userId = await getDefaultUserId();
+  const comparison = await prisma.comparison.findFirst({
+    where: { id: comparisonId, userId },
+    select: { id: true },
+  });
+  if (!comparison) return null;
+  const row = await prisma.receipt.findUnique({
+    where: { comparisonId: comparison.id },
+  });
+  return row ? toReceipt(row) : null;
 }

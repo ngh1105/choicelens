@@ -21,3 +21,8 @@ Thumbs.db
 
 # local data store
 .data/
+
+# prisma local sqlite db artifacts
+/prisma/dev.db
+/prisma/dev.db-journal
+/prisma/migrations/dev/

@@ -4,12 +4,21 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:reset": "prisma db push --force-reset && prisma db seed",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "@rainbow-me/rainbowkit": "^2.2.11",
     "@tanstack/react-query": "^5.100.10",
     "framer-motion": "^12.39.0",
@@ -28,6 +37,8 @@
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.38.0",
     "eslint-config-next": "^16.2.6",
+    "prisma": "^6.19.3",
+    "tsx": "^4.22.2",
     "typescript": "^6.0.3"
   }
 }
