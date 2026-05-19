@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ExternalLink,
   Plus,
@@ -27,6 +27,8 @@ import {
 } from "@/lib/comparison";
 import type { DecisionReceipt } from "@/lib/genlayer";
 import { isWalletConfigured } from "@/lib/wallet";
+import { ReceiptCard } from "@/components/receipt/ReceiptCard";
+import { useReceiptPolling, type PolledReceipt } from "@/lib/hooks/useReceiptPolling";
 
 interface WatchlistEntry {
   id: string;
@@ -121,6 +123,7 @@ export default function HomePage() {
   const [isSavingWatchlist, setIsSavingWatchlist] = useState<boolean>(false);
   const [removingWatchId, setRemovingWatchId] = useState<string | null>(null);
   const [isBuildingReceipt, setIsBuildingReceipt] = useState<boolean>(false);
+  const [pollRestartKey, setPollRestartKey] = useState<number>(0);
 
   const validOptions = useMemo(
     () => options.filter((o) => o.name.trim().length > 0),
@@ -299,12 +302,43 @@ export default function HomePage() {
         { method: "POST" },
       );
       setReceipt(payload.receipt);
+      setPollRestartKey((k) => k + 1);
     } catch (err) {
       setActionError(errorMessage(err, "Unable to build receipt."));
     } finally {
       setIsBuildingReceipt(false);
     }
   }
+
+  const pollComparisonId = useMemo(() => {
+    if (!receipt) return null;
+    const TERMINAL = new Set([
+      "finalized",
+      "finalized_with_error",
+      "failed",
+      "off_chain_only",
+    ]);
+    if (TERMINAL.has(receipt.status)) return null;
+    if (!receipt.transactionHash) return null;
+    return receipt.comparisonId;
+  }, [receipt]);
+
+  const pollFetcher = useCallback(
+    (id: string) =>
+      fetchJson<{ receipt: ReceiptRecord }>(`/api/comparisons/${id}/receipt`).then(
+        (r) => r.receipt as ReceiptRecord & PolledReceipt,
+      ),
+    [],
+  );
+
+  const polling = useReceiptPolling<ReceiptRecord & PolledReceipt>(
+    pollComparisonId,
+    pollFetcher,
+    pollRestartKey,
+  );
+
+  const displayReceipt: ReceiptRecord | null =
+    (polling.receipt as ReceiptRecord | null) ?? receipt;
 
   return (
     <div className="app-shell">
@@ -392,10 +426,12 @@ export default function HomePage() {
           />
           <ReceiptPanel
             result={result}
-            receipt={receipt}
+            receipt={displayReceipt}
             onBuild={handleBuildReceipt}
             canBuild={Boolean(comparisonId)}
             isBuilding={isBuildingReceipt}
+            pollingError={polling.error}
+            onRetry={handleBuildReceipt}
           />
         </aside>
       </main>
@@ -874,6 +910,8 @@ interface ReceiptPanelProps {
   onBuild: () => void;
   canBuild: boolean;
   isBuilding: boolean;
+  pollingError: string | null;
+  onRetry: () => void;
 }
 
 function ReceiptPanel({
@@ -882,6 +920,8 @@ function ReceiptPanel({
   onBuild,
   canBuild,
   isBuilding,
+  pollingError,
+  onRetry,
 }: ReceiptPanelProps) {
   return (
     <div className="panel">
@@ -907,36 +947,11 @@ function ReceiptPanel({
           </button>
         </div>
         {receipt ? (
-          <div className="receipt-card">
-            <div className="receipt-row">
-              <span className="receipt-key">Receipt</span>
-              <span className="receipt-val">{receipt.id}</span>
-            </div>
-            <div className="receipt-row">
-              <span className="receipt-key">Payload</span>
-              <span className="receipt-val">{receipt.payloadHash}</span>
-            </div>
-            <div className="receipt-row">
-              <span className="receipt-key">Status</span>
-              <span className="receipt-val">{receipt.status}</span>
-            </div>
-            <div className="receipt-row">
-              <span className="receipt-key">Network</span>
-              <span className="receipt-val">{receipt.network}</span>
-            </div>
-            <div className="receipt-row">
-              <span className="receipt-key">Tx hash</span>
-              <span className="receipt-val">
-                {receipt.transactionHash ?? "-"}
-              </span>
-            </div>
-            <div className="receipt-row">
-              <span className="receipt-key">Created</span>
-              <span className="receipt-val">
-                {new Date(receipt.createdAt).toLocaleString()}
-              </span>
-            </div>
-          </div>
+          <ReceiptCard
+            receipt={receipt}
+            pollingError={pollingError}
+            onRetry={onRetry}
+          />
         ) : null}
       </div>
     </div>
