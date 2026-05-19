@@ -56,7 +56,12 @@ model Receipt {
   payloadHash     String
   status          String
   network         String
+  submitterKind   String     // "service" | "user" | "mock"
+  creatorAddress  String?
   contractAddress String?
   transactionHash String?
+  executionResult String?    // "ok" | "error" | raw genlayer name
+  errorCode       String?    // GenLayerError code if status=failed
   createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 }
