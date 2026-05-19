@@ -12,7 +12,9 @@
     "db:push": "prisma db push",
     "db:reset": "prisma db push --force-reset && prisma db seed",
     "db:seed": "prisma db seed",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -35,10 +37,13 @@
     "@types/node": "^25.9.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitest/ui": "^2.1.9",
+    "dotenv": "^16.6.1",
     "eslint": "^9.38.0",
     "eslint-config-next": "^16.2.6",
     "prisma": "^6.19.3",
     "tsx": "^4.22.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^2.1.9"
   }
 }
