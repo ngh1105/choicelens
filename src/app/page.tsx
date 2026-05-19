@@ -123,6 +123,7 @@ export default function HomePage() {
   const [isSavingWatchlist, setIsSavingWatchlist] = useState<boolean>(false);
   const [removingWatchId, setRemovingWatchId] = useState<string | null>(null);
   const [isBuildingReceipt, setIsBuildingReceipt] = useState<boolean>(false);
+  const [pollRestartKey, setPollRestartKey] = useState<number>(0);
 
   const validOptions = useMemo(
     () => options.filter((o) => o.name.trim().length > 0),
@@ -301,6 +302,7 @@ export default function HomePage() {
         { method: "POST" },
       );
       setReceipt(payload.receipt);
+      setPollRestartKey((k) => k + 1);
     } catch (err) {
       setActionError(errorMessage(err, "Unable to build receipt."));
     } finally {
@@ -332,6 +334,7 @@ export default function HomePage() {
   const polling = useReceiptPolling<ReceiptRecord & PolledReceipt>(
     pollComparisonId,
     pollFetcher,
+    pollRestartKey,
   );
 
   const displayReceipt: ReceiptRecord | null =

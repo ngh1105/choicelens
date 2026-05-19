@@ -25,6 +25,7 @@ export interface UseReceiptPollingResult<T extends PolledReceipt> {
 export function useReceiptPolling<T extends PolledReceipt>(
   comparisonId: string | null,
   fetcher: (id: string) => Promise<T>,
+  restartKey: number = 0,
 ): UseReceiptPollingResult<T> {
   const [receipt, setReceipt] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +63,7 @@ export function useReceiptPolling<T extends PolledReceipt>(
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [comparisonId, fetcher]);
+  }, [comparisonId, fetcher, restartKey]);
 
   return { receipt, error };
 }
