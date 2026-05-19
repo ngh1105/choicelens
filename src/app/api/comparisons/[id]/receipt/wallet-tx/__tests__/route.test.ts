@@ -105,7 +105,7 @@ describe("POST /api/comparisons/[id]/receipt/wallet-tx", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toBe("wallet_not_connected");
+    expect(body.error).toBe("wallet_rejected");
   });
 
   it("rejects when transactionHash is not hex", async () => {
@@ -115,7 +115,7 @@ describe("POST /api/comparisons/[id]/receipt/wallet-tx", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toBe("wallet_not_connected");
+    expect(body.error).toBe("wallet_rejected");
   });
 
   it("returns 404 when comparison missing", async () => {

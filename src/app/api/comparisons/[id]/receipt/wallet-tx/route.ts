@@ -42,8 +42,11 @@ export async function POST(
   }
   const body = payload as { transactionHash?: unknown; creatorAddress?: unknown };
 
-  if (!isHex(body.transactionHash) || !isAddress(body.creatorAddress)) {
+  if (body.transactionHash === undefined || body.creatorAddress === undefined) {
     return NextResponse.json({ error: "wallet_not_connected" }, { status: 400 });
+  }
+  if (!isHex(body.transactionHash) || !isAddress(body.creatorAddress)) {
+    return NextResponse.json({ error: "wallet_rejected" }, { status: 400 });
   }
 
   const transactionHash = body.transactionHash;
