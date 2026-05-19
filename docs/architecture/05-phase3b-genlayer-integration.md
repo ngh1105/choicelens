@@ -1,0 +1,72 @@
+# Phase 3B — GenLayer integration
+
+Anchors decision receipts on GenLayer Studionet through two paths sharing one persisted row per comparison.
+
+## Surface area
+
+| Layer | Files |
+| --- | --- |
+| Contract | `contracts/ChoiceLensDecisionRegistry.py` |
+| Module | `src/lib/genlayer/{types,errors,buildInput,client,service,mock,category,walletClient,index}.ts` |
+| Persistence | `prisma/schema.prisma` `Receipt` model + `src/lib/store.ts` (`saveReceipt`, `getReceiptForComparison`, `updateReceiptStatus`) |
+| Service path API | `src/app/api/comparisons/[id]/receipt/route.ts` (POST submit, GET lazy poll) |
+| Wallet path API | `src/app/api/comparisons/[id]/receipt/build-input/route.ts`, `.../wallet-tx/route.ts` |
+| Frontend | `src/components/receipt/{ReceiptCard,ReceiptStatusPill,WalletPathToggle,WalletReceiptControls}.tsx`, `src/lib/hooks/useReceiptPolling.ts` |
+| Operator | `scripts/deploy-registry.ts`, `scripts/check-studionet.ts` |
+
+Spec: `docs/superpowers/specs/2026-05-19-phase3b-genlayer-integration-design.md`.
+
+## Path comparison
+
+| | Service path | Wallet path |
+| --- | --- | --- |
+| Trigger | POST `/api/comparisons/[id]/receipt` | Toggle on + sign in `WalletReceiptControls` |
+| Submitter | Server account from `GENLAYER_SERVICE_PRIVATE_KEY` | User wallet via wagmi |
+| Tx hash source | `client.writeContract()` return | User-signed message (Phase 3B placeholder; on-chain write deferred until GenLayer MetaMask Snap) |
+| `submitterKind` | `"service"` | `"user"` |
+| Status refresh | GET poll calls `refreshReceiptStatus` until terminal | Same |
+
+The two paths share the `Receipt` row (UNIQUE on `comparisonId`) — the latest write wins.
+
+## Network matrix
+
+`GENLAYER_NETWORK=mock` (default) returns an off-chain receipt: status `off_chain_only`, no tx, no polling. Studionet activates the live writeContract on the service path and unlocks the wallet path UI when public envs are present.
+
+| `GENLAYER_NETWORK` | Service path | Wallet path UI | Polling |
+| --- | --- | --- | --- |
+| `mock` | builds off-chain receipt | hidden | off |
+| `studionet` | live submit if service key set, else 503 `service_account_unavailable` | rendered when wallet connected | on while non-terminal |
+
+## Env matrix
+
+Server-side (do NOT expose to bundle):
+- `GENLAYER_NETWORK` — `mock` | `studionet`
+- `GENLAYER_CONTRACT_ADDRESS` — populated post-deploy
+- `GENLAYER_SERVICE_PRIVATE_KEY` — required for service path
+- `GENLAYER_RPC_URL` — Studionet endpoint
+
+Browser-side (mirror of server values; safe to expose):
+- `NEXT_PUBLIC_GENLAYER_NETWORK`
+- `NEXT_PUBLIC_GENLAYER_CONTRACT_ADDRESS`
+- `NEXT_PUBLIC_GENLAYER_CHAIN_ID`
+- `NEXT_PUBLIC_GENLAYER_RPC_URL`
+
+`isGenLayerWalletPathConfigured` in `src/lib/wallet.ts` gates the wallet UI on these mirror values.
+
+## Error model
+
+`GenLayerError` codes (`src/lib/genlayer/errors.ts`) map to HTTP via `HTTP_STATUS_BY_CODE`. Notable:
+- `service_account_unavailable` (503) — service path, no key.
+- `genlayer_rpc_unavailable` (503) — RPC down.
+- `transaction_timeout` (502) — surfaced to the GET handler, swallowed (returns existing row 200) so the off-chain result remains usable.
+- `wallet_not_connected` (400) — wallet-tx route, missing `transactionHash` or `creatorAddress`.
+- `wallet_rejected` (400) — wallet-tx route, malformed hex.
+
+## Operator scripts
+
+```bash
+npm run genlayer:deploy   # one-shot contract deploy → operator copies address into .env
+npm run genlayer:smoke    # end-to-end studionet check (requires service key + contract addr)
+```
+
+See `docs/runbook/genlayer-service-account.md` for top-up, rotation, and `503` recovery.
