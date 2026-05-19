@@ -668,3 +668,35 @@ input[type="range"]::-moz-range-thumb {
   color: var(--danger);
   font-size: 12px;
 }
+
+.wallet-path-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-soft);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wallet-path-toggle input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.wallet-path-toggle input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
+.wallet-path-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.wallet-path-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}

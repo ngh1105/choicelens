@@ -26,8 +26,9 @@ import {
   type ScoredOption,
 } from "@/lib/comparison";
 import type { DecisionReceipt } from "@/lib/genlayer";
-import { isWalletConfigured } from "@/lib/wallet";
+import { isGenLayerWalletPathConfigured, isWalletConfigured } from "@/lib/wallet";
 import { ReceiptCard } from "@/components/receipt/ReceiptCard";
+import { WalletReceiptControls } from "@/components/receipt/WalletReceiptControls";
 import { useReceiptPolling, type PolledReceipt } from "@/lib/hooks/useReceiptPolling";
 
 interface WatchlistEntry {
@@ -427,11 +428,17 @@ export default function HomePage() {
           <ReceiptPanel
             result={result}
             receipt={displayReceipt}
+            comparisonId={comparisonId}
             onBuild={handleBuildReceipt}
             canBuild={Boolean(comparisonId)}
             isBuilding={isBuildingReceipt}
             pollingError={polling.error}
             onRetry={handleBuildReceipt}
+            onWalletReceipt={(record) => {
+              setReceipt(record);
+              setPollRestartKey((k) => k + 1);
+            }}
+            onWalletError={(message) => setActionError(message)}
           />
         </aside>
       </main>
@@ -907,22 +914,30 @@ function WatchlistPanel({
 interface ReceiptPanelProps {
   result: ComparisonResult | null;
   receipt: ReceiptRecord | null;
+  comparisonId: string | null;
   onBuild: () => void;
   canBuild: boolean;
   isBuilding: boolean;
   pollingError: string | null;
   onRetry: () => void;
+  onWalletReceipt: (receipt: ReceiptRecord) => void;
+  onWalletError: (message: string) => void;
 }
 
 function ReceiptPanel({
   result,
   receipt,
+  comparisonId,
   onBuild,
   canBuild,
   isBuilding,
   pollingError,
   onRetry,
+  onWalletReceipt,
+  onWalletError,
 }: ReceiptPanelProps) {
+  const [walletBusy, setWalletBusy] = useState<boolean>(false);
+  const showWalletControls = isWalletConfigured && isGenLayerWalletPathConfigured;
   return (
     <div className="panel">
       <div className="panel-header">
@@ -940,12 +955,21 @@ function ReceiptPanel({
             className="btn"
             type="button"
             onClick={onBuild}
-            disabled={!result || !canBuild || isBuilding}
+            disabled={!result || !canBuild || isBuilding || walletBusy}
           >
             <FileSignature size={14} />
             {isBuilding ? "Building..." : "Build receipt"}
           </button>
         </div>
+        {showWalletControls ? (
+          <WalletReceiptControls
+            comparisonId={comparisonId}
+            disabled={!result || !canBuild || isBuilding}
+            onSubmitting={setWalletBusy}
+            onSubmitted={(record) => onWalletReceipt(record as ReceiptRecord)}
+            onError={onWalletError}
+          />
+        ) : null}
         {receipt ? (
           <ReceiptCard
             receipt={receipt}
