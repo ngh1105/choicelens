@@ -21,3 +21,5 @@ Thumbs.db
 
 # local data store
 .data/
+prisma/*.db
+prisma/*.db-journal
