@@ -29,11 +29,18 @@ User (id, handle, createdAt)
 
 1. Copy env: `cp .env.example .env` (default `DATABASE_URL=file:./dev.db`).
 2. Push schema and create the SQLite db: `npm run db:push`.
-3. `npm run dev`.
+3. Seed demo data: `npm run db:seed`.
+4. `npm run dev`.
+
+To wipe and reseed in one shot: `npm run db:reset` (this is `db push --force-reset` + seed; SQLite-only, dev-only).
 
 Build runs `prisma generate` automatically; manual `npm run db:generate` is only needed if you change `prisma/schema.prisma` mid-session.
 
 If you have a stray `DATABASE_URL` exported at the shell level, Prisma uses that instead of `.env`. Either `unset DATABASE_URL` or pass an explicit absolute path: `DATABASE_URL=file:$PWD/prisma/dev.db npm run db:push`.
+
+## Seed
+
+`prisma/seed.ts` runs through `tsx` (registered via `package.json#prisma.seed`). It upserts the anon user plus one demo `Comparison` ("smartphones, ~$1000"), one `WatchlistEntry` for the top pick, and one mock `Receipt`. The comparison id is fixed (`seed-comparison-phones`) so reseeds are idempotent.
 
 ## Anonymous default user
 
@@ -42,6 +49,7 @@ If you have a stray `DATABASE_URL` exported at the shell level, Prisma uses that
 ## Files added
 
 - `prisma/schema.prisma` — schema.
+- `prisma/seed.ts` — anon user + demo comparison/watchlist/receipt for `db:seed` and `db:reset`.
 - `src/lib/db.ts` — Prisma client singleton + anon-user bootstrap.
 - `src/lib/store.ts` — rewritten on top of Prisma; same exports as before.
 

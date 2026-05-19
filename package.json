@@ -10,8 +10,12 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:reset": "prisma migrate reset --force",
+    "db:reset": "prisma db push --force-reset && prisma db seed",
+    "db:seed": "prisma db seed",
     "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -34,6 +38,7 @@
     "eslint": "^9.38.0",
     "eslint-config-next": "^16.2.6",
     "prisma": "^6.19.3",
+    "tsx": "^4.22.2",
     "typescript": "^6.0.3"
   }
 }
