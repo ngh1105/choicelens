@@ -1,0 +1,62 @@
+// Phase 3A data foundation. SQLite for dev; swappable provider for prod later.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  handle    String   @unique
+  createdAt DateTime @default(now())
+
+  comparisons Comparison[]
+  watchlist   WatchlistEntry[]
+}
+
+model Comparison {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  // Serialized JSON of ComparisonInput and ComparisonResult.
+  // SQLite has no native JSON type; we store strings and parse in the store layer.
+  input     String
+  result    String
+
+  watchlist WatchlistEntry[]
+  receipt   Receipt?
+
+  @@index([userId, createdAt])
+}
+
+model WatchlistEntry {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comparisonId String
+  comparison   Comparison @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+  optionId     String
+  name         String
+  score        Float
+  payloadHash  String
+  addedAt      DateTime   @default(now())
+
+  @@unique([comparisonId, payloadHash])
+  @@index([userId, addedAt])
+}
+
+model Receipt {
+  id              String     @id
+  comparisonId    String     @unique
+  comparison      Comparison @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+  payloadHash     String
+  status          String
+  network         String
+  contractAddress String?
+  transactionHash String?
+  createdAt       DateTime   @default(now())
+}
