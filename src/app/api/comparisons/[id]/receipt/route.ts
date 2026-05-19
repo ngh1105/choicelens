@@ -44,7 +44,11 @@ export async function POST(
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
     const built = getGenLayerService().buildReceipt(comparison.result);
-    const record = await saveReceipt({ comparisonId: id, receipt: built });
+    const record = await saveReceipt({
+      comparisonId: id,
+      receipt: built,
+      submitterKind: "mock",
+    });
     return NextResponse.json({ receipt: record }, { status: 201 });
   } catch (err) {
     if (err instanceof StoreError && err.code === "comparison_not_found") {
