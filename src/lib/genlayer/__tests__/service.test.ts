@@ -1,10 +1,17 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { resetServiceCache, getGenLayerService } from "../service";
 import { MockGenLayerService } from "../mock";
 import { GenLayerError, isGenLayerError } from "../errors";
 
 describe("getGenLayerService", () => {
+  const originalEnv = { ...process.env };
+
   beforeEach(() => {
+    resetServiceCache();
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
     resetServiceCache();
   });
 
