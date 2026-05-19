@@ -14,7 +14,8 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "genlayer:deploy": "tsx scripts/deploy-registry.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
