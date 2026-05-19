@@ -22,6 +22,11 @@ export interface WatchlistRecord {
 
 export interface ReceiptRecord extends DecisionReceipt {
   comparisonId: string;
+  submitterKind: "service" | "user" | "mock";
+  creatorAddress: string | null;
+  executionResult: string | null;
+  errorCode: string | null;
+  updatedAt: string;
 }
 
 export class StoreError extends Error {
@@ -56,9 +61,14 @@ type DbReceipt = {
   payloadHash: string;
   status: string;
   network: string;
+  submitterKind: string;
+  creatorAddress: string | null;
   contractAddress: string | null;
   transactionHash: string | null;
+  executionResult: string | null;
+  errorCode: string | null;
   createdAt: Date;
+  updatedAt: Date;
 };
 
 function toComparison(row: DbComparison): ComparisonRecord {
@@ -89,9 +99,14 @@ function toReceipt(row: DbReceipt): ReceiptRecord {
     payloadHash: row.payloadHash,
     status: row.status as ReceiptStatus,
     network: row.network,
+    submitterKind: row.submitterKind as "service" | "user" | "mock",
+    creatorAddress: row.creatorAddress,
     contractAddress: row.contractAddress,
     transactionHash: row.transactionHash,
+    executionResult: row.executionResult,
+    errorCode: row.errorCode,
     createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -192,6 +207,10 @@ export async function removeWatchlistEntry(id: string): Promise<boolean> {
 export async function saveReceipt(args: {
   comparisonId: string;
   receipt: DecisionReceipt;
+  submitterKind: "service" | "user" | "mock";
+  creatorAddress?: string | null;
+  executionResult?: string | null;
+  errorCode?: string | null;
 }): Promise<ReceiptRecord> {
   const userId = await getDefaultUserId();
   const comparison = await prisma.comparison.findFirst({
@@ -202,6 +221,9 @@ export async function saveReceipt(args: {
     throw new StoreError("comparison_not_found", "Comparison not found");
   }
   const r = args.receipt;
+  const creatorAddress = args.creatorAddress ?? null;
+  const executionResult = args.executionResult ?? null;
+  const errorCode = args.errorCode ?? null;
   const row = await prisma.receipt.upsert({
     where: { comparisonId: comparison.id },
     create: {
@@ -210,16 +232,24 @@ export async function saveReceipt(args: {
       payloadHash: r.payloadHash,
       status: r.status,
       network: r.network,
+      submitterKind: args.submitterKind,
+      creatorAddress,
       contractAddress: r.contractAddress,
       transactionHash: r.transactionHash,
+      executionResult,
+      errorCode,
       createdAt: new Date(r.createdAt),
     },
     update: {
       payloadHash: r.payloadHash,
       status: r.status,
       network: r.network,
+      submitterKind: args.submitterKind,
+      creatorAddress,
       contractAddress: r.contractAddress,
       transactionHash: r.transactionHash,
+      executionResult,
+      errorCode,
     },
   });
   return toReceipt(row);
