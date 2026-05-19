@@ -35,12 +35,16 @@ export function useReceiptPolling<T extends PolledReceipt>(
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     startedAtRef.current = Date.now();
-    setError(null);
+    let isFirstTick = true;
 
     const tick = async () => {
       try {
         const next = await fetcher(comparisonId);
         if (cancelled) return;
+        if (isFirstTick) {
+          isFirstTick = false;
+          setError(null);
+        }
         setReceipt(next);
         if (TERMINAL.has(next.status)) return;
         if (Date.now() - (startedAtRef.current ?? 0) > MAX_TOTAL_MS) {
