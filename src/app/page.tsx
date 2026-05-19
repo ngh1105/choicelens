@@ -11,6 +11,7 @@ import {
   Wallet,
   CircleDot,
 } from "lucide-react";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
   AGENT_LABELS,
   DEFAULT_PRIORITIES,
@@ -322,10 +323,14 @@ export default function HomePage() {
             />
             Wallet {isWalletConfigured ? "ready" : "optional"}
           </span>
-          <button className="btn btn-ghost" type="button" disabled>
-            <Wallet size={14} />
-            Connect
-          </button>
+          {isWalletConfigured ? (
+            <ConnectButton />
+          ) : (
+            <button className="btn btn-ghost" type="button" disabled>
+              <Wallet size={14} />
+              Connect
+            </button>
+          )}
         </div>
       </header>
 
