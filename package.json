@@ -15,7 +15,8 @@
     "db:studio": "prisma studio",
     "test": "vitest run",
     "test:watch": "vitest",
-    "genlayer:deploy": "tsx scripts/deploy-registry.ts"
+    "genlayer:deploy": "tsx scripts/deploy-registry.ts",
+    "genlayer:smoke": "tsx scripts/check-studionet.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
