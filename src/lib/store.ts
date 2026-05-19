@@ -269,3 +269,23 @@ export async function getReceiptForComparison(
   });
   return row ? toReceipt(row) : null;
 }
+
+export async function updateReceiptStatus(args: {
+  comparisonId: string;
+  status: ReceiptStatus;
+  executionResult: string | null;
+}): Promise<ReceiptRecord> {
+  const userId = await getDefaultUserId();
+  const comparison = await prisma.comparison.findFirst({
+    where: { id: args.comparisonId, userId },
+    select: { id: true },
+  });
+  if (!comparison) {
+    throw new StoreError("comparison_not_found", "Comparison not found");
+  }
+  const row = await prisma.receipt.update({
+    where: { comparisonId: comparison.id },
+    data: { status: args.status, executionResult: args.executionResult },
+  });
+  return toReceipt(row);
+}

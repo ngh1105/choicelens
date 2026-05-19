@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
-import { getGenLayerService } from "@/lib/genlayer";
+import {
+  buildCreateDecisionReceiptInput,
+  getGenLayerService,
+  HTTP_STATUS_BY_CODE,
+  isGenLayerError,
+  type ReceiptStatus,
+} from "@/lib/genlayer";
 import {
   getComparison,
   getReceiptForComparison,
   saveReceipt,
   StoreError,
+  updateReceiptStatus,
+  type ComparisonRecord,
 } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -13,23 +21,60 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
+const TERMINAL_STATUSES = new Set<ReceiptStatus>([
+  "finalized",
+  "finalized_with_error",
+  "failed",
+  "off_chain_only",
+]);
+
+function deriveCategory(comparison: ComparisonRecord): string {
+  return comparison.input.prompt?.split(" ")[0] ?? "general";
+}
+
 export async function GET(
   _request: Request,
   context: RouteContext,
 ): Promise<NextResponse> {
   const { id } = await context.params;
   try {
-    const receipt = await getReceiptForComparison(id);
-    if (!receipt) {
+    const row = await getReceiptForComparison(id);
+    if (!row) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
-    return NextResponse.json({ receipt });
+    if (TERMINAL_STATUSES.has(row.status) || !row.transactionHash) {
+      return NextResponse.json({ receipt: row });
+    }
+    const svc = getGenLayerService();
+    if (!svc.refreshReceiptStatus) {
+      return NextResponse.json({ receipt: row });
+    }
+    try {
+      const update = await svc.refreshReceiptStatus(row.transactionHash);
+      if (update.status === row.status) {
+        return NextResponse.json({ receipt: row });
+      }
+      const next = await updateReceiptStatus({
+        comparisonId: id,
+        status: update.status as ReceiptStatus,
+        executionResult: update.executionResult,
+      });
+      return NextResponse.json({ receipt: next });
+    } catch (err) {
+      if (isGenLayerError(err) && err.code === "transaction_timeout") {
+        return NextResponse.json({ receipt: row });
+      }
+      if (isGenLayerError(err)) {
+        return NextResponse.json(
+          { error: err.code },
+          { status: HTTP_STATUS_BY_CODE[err.code] },
+        );
+      }
+      throw err;
+    }
   } catch (err) {
     console.error(`GET /api/comparisons/${id}/receipt failed`, err);
-    return NextResponse.json(
-      { error: "internal_error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
@@ -43,21 +88,47 @@ export async function POST(
     if (!comparison) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
-    const built = getGenLayerService().buildReceipt(comparison.result);
-    const record = await saveReceipt({
-      comparisonId: id,
-      receipt: built,
-      submitterKind: "mock",
+    const svc = getGenLayerService();
+    const isMock = (process.env.GENLAYER_NETWORK ?? "mock") === "mock";
+    if (isMock || !svc.createDecisionReceipt) {
+      const built = svc.buildReceipt(comparison.result);
+      const record = await saveReceipt({
+        comparisonId: id,
+        receipt: built,
+        submitterKind: "mock",
+      });
+      return NextResponse.json({ receipt: record }, { status: 201 });
+    }
+    const input = buildCreateDecisionReceiptInput({
+      id: comparison.id,
+      category: deriveCategory(comparison),
+      result: comparison.result,
     });
-    return NextResponse.json({ receipt: record }, { status: 201 });
+    try {
+      const { transactionHash, creatorAddress } =
+        await svc.createDecisionReceipt(input);
+      const built = svc.buildReceipt(comparison.result);
+      const record = await saveReceipt({
+        comparisonId: id,
+        receipt: { ...built, transactionHash, status: "pending" },
+        submitterKind: "service",
+        creatorAddress,
+      });
+      return NextResponse.json({ receipt: record }, { status: 201 });
+    } catch (err) {
+      if (isGenLayerError(err)) {
+        return NextResponse.json(
+          { error: err.code },
+          { status: HTTP_STATUS_BY_CODE[err.code] },
+        );
+      }
+      throw err;
+    }
   } catch (err) {
     if (err instanceof StoreError && err.code === "comparison_not_found") {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
     console.error(`POST /api/comparisons/${id}/receipt failed`, err);
-    return NextResponse.json(
-      { error: "internal_error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
