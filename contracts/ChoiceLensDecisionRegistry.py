@@ -1,20 +1,26 @@
-# contracts/ChoiceLensDecisionRegistry.py
+# { "Depends": "py-genlayer:test" }
 from genlayer import *
+from dataclasses import dataclass
+import time
 
+
+@allow_storage
+@dataclass
 class Receipt:
     receipt_id: str
     creator: Address
-    payload_hash: bytes
+    payload_hash: str
     schema_version: str
     category: str
-    recommendation_hash: bytes
+    recommendation_hash: str
     confidence_band: str
     created_at: u256
-    public_summary_hash: bytes | None
+    public_summary_hash: str
+
 
 class ChoiceLensDecisionRegistry(gl.Contract):
     receipts: TreeMap[str, Receipt]
-    by_user: TreeMap[Address, DynArray[str]]
+    by_user: TreeMap[Address, TreeMap[str, bool]]
 
     def __init__(self):
         pass
@@ -23,29 +29,30 @@ class ChoiceLensDecisionRegistry(gl.Contract):
     def create_receipt(
         self,
         receipt_id: str,
-        payload_hash: bytes,
+        payload_hash: str,
         schema_version: str,
         category: str,
-        recommendation_hash: bytes,
+        recommendation_hash: str,
         confidence_band: str,
-        public_summary_hash: bytes | None,
+        public_summary_hash: str,
     ) -> str:
         assert receipt_id not in self.receipts, "receipt_id_taken"
         assert confidence_band in ("low", "medium", "high"), "invalid_confidence"
-        r = Receipt()
-        r.receipt_id = receipt_id
-        r.creator = gl.message.sender_address
-        r.payload_hash = payload_hash
-        r.schema_version = schema_version
-        r.category = category
-        r.recommendation_hash = recommendation_hash
-        r.confidence_band = confidence_band
-        r.created_at = gl.block.timestamp
-        r.public_summary_hash = public_summary_hash
-        self.receipts[receipt_id] = r
-        if r.creator not in self.by_user:
-            self.by_user[r.creator] = DynArray[str]()
-        self.by_user[r.creator].append(receipt_id)
+        creator = gl.message.sender_address
+        self.receipts[receipt_id] = Receipt(
+            receipt_id=receipt_id,
+            creator=creator,
+            payload_hash=payload_hash,
+            schema_version=schema_version,
+            category=category,
+            recommendation_hash=recommendation_hash,
+            confidence_band=confidence_band,
+            created_at=u256(int(time.time())),
+            public_summary_hash=public_summary_hash,
+        )
+        if creator not in self.by_user:
+            self.by_user[creator] = gl.storage.inmem_allocate(TreeMap[str, bool])
+        self.by_user[creator][receipt_id] = True
         return receipt_id
 
     @gl.public.view
@@ -56,4 +63,4 @@ class ChoiceLensDecisionRegistry(gl.Contract):
     def get_user_receipts(self, addr: Address) -> list[str]:
         if addr not in self.by_user:
             return []
-        return list(self.by_user[addr])
+        return list(self.by_user[addr].keys())

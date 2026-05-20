@@ -123,6 +123,22 @@ describe("GenLayerServiceImpl.refreshReceiptStatus", () => {
     expect(out.executionResult).toBe("ok");
   });
 
+  it("returns finalized when consensus says SUCCESS", async () => {
+    const readClient = {
+      waitForTransactionReceipt: vi.fn().mockResolvedValue({
+        consensus_data: { leader_receipt: [{ execution_result: "SUCCESS" }] },
+      }),
+    };
+    const svc = new GenLayerServiceImpl(
+      "0xcontract",
+      () => readClient as never,
+      () => readClient as never,
+    );
+    const out = await svc.refreshReceiptStatus!("0xtx");
+    expect(out.status).toBe("finalized");
+    expect(out.executionResult).toBe("ok");
+  });
+
   it("returns finalized_with_error on FINISHED_WITH_ERROR", async () => {
     const readClient = {
       waitForTransactionReceipt: vi.fn().mockResolvedValue({
