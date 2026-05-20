@@ -95,3 +95,10 @@ Receipt writes are tiny but they happen per submitted comparison. Monitor the se
 - Never paste a real `GENLAYER_SERVICE_PRIVATE_KEY` into docs, issues, PRs, chat, or logs.
 - `.env` is gitignored. Use `.env.example` as the template — it carries no real secrets.
 - Treat any key that has appeared in plaintext anywhere outside the secret manager as compromised; rotate it.
+
+## Phase 3C (planned)
+
+The Phase 3C design — operator observability, kill switch semantics, smoke
+result interpretation — is in `docs/superpowers/specs/2026-05-20-phase3c-genlayer-ops-design.md`.
+Phase 3C ships only after this runbook's operator checklist is complete in
+production.
