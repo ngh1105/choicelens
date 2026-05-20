@@ -48,7 +48,7 @@ async function main() {
       input.category,
       `0x${input.recommendationHash}`,
       input.confidenceBand,
-      input.publicSummaryHash ? `0x${input.publicSummaryHash}` : null,
+      input.publicSummaryHash ? `0x${input.publicSummaryHash}` : "",
     ],
     value: 0n,
   })) as `0x${string}`;
@@ -72,7 +72,7 @@ async function main() {
 
   console.log("[smoke] status:", status, "exec:", exec);
 
-  if (exec !== "FINISHED_WITH_RETURN") {
+  if (exec !== "SUCCESS" && exec !== "FINISHED_WITH_RETURN") {
     throw new Error(`Smoke failed: execution_result=${exec}`);
   }
   console.log("[smoke] OK");

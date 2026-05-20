@@ -69,4 +69,18 @@ npm run genlayer:deploy   # one-shot contract deploy → operator copies address
 npm run genlayer:smoke    # end-to-end studionet check (requires service key + contract addr)
 ```
 
+`scripts/deploy-and-smoke-ephemeral.ts` is a one-shot variant that generates a temporary
+private key in-process for ad-hoc Studionet validation; it never writes the key to disk.
+
 See `docs/runbook/genlayer-service-account.md` for top-up, rotation, and `503` recovery.
+
+## Contract storage notes
+
+`ChoiceLensDecisionRegistry.py` uses GenVM-friendly types only:
+- `@allow_storage @dataclass` for the `Receipt` struct (custom storage classes must be both).
+- Hash fields are `str` (`0x`-prefixed hex). The runtime's `bytes` storage codec rejects
+  Python `str`, and genlayer-js sends hex args as Python `str`, so we keep the wire type aligned.
+- `by_user` is `TreeMap[Address, TreeMap[str, bool]]` (set semantics) — `DynArray[str]` nested
+  inside a `TreeMap` failed to deploy on Studionet with `invalid_contract`.
+- `created_at` uses `time.time()` (transaction-deterministic) since `gl.block` was removed.
+- Empty `public_summary_hash` is the empty string `""`, not `null`.

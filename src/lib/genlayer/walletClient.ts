@@ -68,7 +68,7 @@ export async function submitReceiptWithWallet(
       i.category,
       `0x${i.recommendationHash}`,
       i.confidenceBand,
-      i.publicSummaryHash ? `0x${i.publicSummaryHash}` : null,
+      i.publicSummaryHash ? `0x${i.publicSummaryHash}` : "",
     ],
     value: 0n,
   })) as `0x${string}`;

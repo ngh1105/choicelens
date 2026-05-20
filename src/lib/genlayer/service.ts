@@ -80,7 +80,7 @@ export class GenLayerServiceImpl implements GenLayerService {
           input.category,
           `0x${input.recommendationHash}`,
           input.confidenceBand,
-          input.publicSummaryHash ? `0x${input.publicSummaryHash}` : null,
+          input.publicSummaryHash ? `0x${input.publicSummaryHash}` : "",
         ],
         value: 0n,
       });
@@ -105,7 +105,7 @@ export class GenLayerServiceImpl implements GenLayerService {
       });
       const txExec = receipt.consensus_data?.leader_receipt?.[0]?.execution_result;
       if (!txExec) return { status: "accepted", executionResult: null };
-      if (txExec === "FINISHED_WITH_RETURN") return { status: "finalized", executionResult: "ok" };
+      if (txExec === "FINISHED_WITH_RETURN" || txExec === "SUCCESS") return { status: "finalized", executionResult: "ok" };
       if (txExec === "FINISHED_WITH_ERROR") return { status: "finalized_with_error", executionResult: "error" };
       return { status: "finalized", executionResult: txExec };
     } catch (err) {

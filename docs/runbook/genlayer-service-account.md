@@ -30,7 +30,7 @@ If the key is unset, the service path returns `503 service_account_unavailable` 
    ```bash
    npm run genlayer:smoke
    ```
-   Expected: a tx hash, `statusName: FINALIZED`, `exec: FINISHED_WITH_RETURN`, `[smoke] OK`.
+   Expected: a tx hash, `statusName: FINALIZED`, `exec: SUCCESS` (or legacy `FINISHED_WITH_RETURN`), `[smoke] OK`.
 
 ## Top-up
 
