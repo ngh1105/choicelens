@@ -125,9 +125,59 @@ Receipt writes are tiny but they happen per submitted comparison. Monitor the se
 - `.env` is gitignored. Use `.env.example` as the template — it carries no real secrets.
 - Treat any key that has appeared in plaintext anywhere outside the secret manager as compromised; rotate it.
 
-## Phase 3C (planned)
+## Phase 3C — operator health endpoint
 
-The Phase 3C design — operator observability, kill switch semantics, smoke
-result interpretation — is in `docs/superpowers/specs/2026-05-20-phase3c-genlayer-ops-design.md`.
-Phase 3C ships only after this runbook's operator checklist is complete in
-production.
+After Phase 3C ships, the operator can read the live health snapshot from
+either an admin page or the JSON endpoint that backs it.
+
+- Page: `GET /admin/genlayer` — server component, read-only, no controls.
+- API: `GET /api/admin/genlayer/health` with header
+  `Authorization: Bearer $ADMIN_API_TOKEN`. Missing token returns
+  `503 admin_token_not_configured`; wrong/missing bearer returns `401`.
+
+Safe fields the response/page exposes (and only these):
+
+- `operatorState` (enum, see below) + `killSwitchActive` boolean.
+- `network`, `contractAddressRedacted` (e.g. `0xD7E2…A418`),
+  `serviceKeyPresent`, `serviceKeyFormatValid`, `serviceAddress` (derived
+  from the key, OK to publish), `rpcUrlConfigured`.
+- `counts24h` per status (`submitted`, `accepted`, `finalized`,
+  `finalized_with_error`, `off_chain_only`, `failed`).
+- `recentErrors` — last 5 receipt rows with `errorCode` in the last 24h.
+- `lastSuccessfulAt`, `checkedAt`.
+
+The endpoint never returns the value of `GENLAYER_SERVICE_PRIVATE_KEY`.
+
+### Kill switch
+
+Reuses the existing `GENLAYER_NETWORK` env var — there is no second
+kill-switch variable. To disable the live receipt path:
+
+1. Set `GENLAYER_NETWORK=mock` in the host's secret manager / env config.
+2. Restart the server so the genlayer-js singletons re-read env.
+3. Confirm the admin page reports `kill_switch_active` (yellow pill,
+   "Kill switch active — receipts run off-chain.").
+
+The wallet path UI hides automatically (still gated by
+`isGenLayerWalletPathConfigured`), and the service path returns off-chain
+receipts. Receipt rows already on-chain are unaffected.
+
+### Operator state → action
+
+| `operatorState` | Likely cause | Action |
+| --- | --- | --- |
+| `studionet_configured` | At least one finalized receipt in last 24h | None — healthy |
+| `studionet_idle` | Studionet configured, no traffic in 24h | Run `npm run genlayer:smoke:ephemeral` |
+| `studionet_unavailable` | `genlayer_rpc_unavailable` / `transaction_timeout` in last 24h | Run `npm run genlayer:smoke`; if persistent, check Studio status |
+| `insufficient_funds` | Service account out of GEN | Top up (§Top-up) |
+| `studionet_no_service_key` | Key missing or wrong format | Set `GENLAYER_SERVICE_PRIVATE_KEY`, restart |
+| `contract_not_configured` | `GENLAYER_CONTRACT_ADDRESS` empty | Set address, restart |
+| `kill_switch_active` | `GENLAYER_NETWORK=mock` after prior live use | Confirm intentional; flip back when ready |
+| `mock` | Dev / staging baseline | None |
+
+### Required env
+
+- `ADMIN_API_TOKEN` — single bearer token, kept in the host's secret
+  manager. Never paste into docs / chat / logs. Rotate by replacing the
+  env value and restarting.
+- All four `GENLAYER_*` server envs (already required by Phase 3B).
