@@ -47,6 +47,14 @@ If you hit `contract_not_found_handler`:
 - Re-run `npm run genlayer:smoke:ephemeral` to confirm the live network round-trip is healthy (deploy + write in one process).
 - Verify `GENLAYER_CONTRACT_ADDRESS` matches a contract that was actually finalized on the network the runtime is talking to.
 
+## Contract schema load failures
+
+If Studio says "Could not load contract schema" or a deploy finalizes with
+`invalid_contract`, inspect the GenVM log before changing storage layout. A log
+like `:test/ :latest runner used in non-debug mode, this is not allowed` means
+the `Depends` header is using an unstable runner channel. Studionet non-debug
+deploys require the contract to pin a concrete `py-genlayer` runner hash.
+
 ## Rollback
 
 The service path is non-fatal — degrading to off-chain receipts keeps the product usable while you triage.
