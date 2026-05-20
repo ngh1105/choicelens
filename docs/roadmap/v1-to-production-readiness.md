@@ -176,6 +176,9 @@ Exit criteria:
 - Admin can disable GenLayer receipt creation if network issues occur.
 - User support channel is ready.
 
+The launch-readiness admin/observability surface is designed in
+`docs/superpowers/specs/2026-05-20-phase3c-genlayer-ops-design.md`.
+
 ## 8. Phase 6: Production Hardening
 
 Goal: make the product reliable enough to grow.
