@@ -62,11 +62,16 @@ Browser-side (mirror of server values; safe to expose):
 - `wallet_not_connected` (400) — wallet-tx route, missing `transactionHash` or `creatorAddress`.
 - `wallet_rejected` (400) — wallet-tx route, malformed hex.
 
+## Execution result mapping
+
+`service.ts` treats both `SUCCESS` and `FINISHED_WITH_RETURN` as a finalized successful write (PR #11 — the live Studio runtime returns `SUCCESS` for create_receipt while the older simulator returns `FINISHED_WITH_RETURN`). Anything else is surfaced to the caller as a transaction failure rather than silently mapped to success.
+
 ## Operator scripts
 
 ```bash
-npm run genlayer:deploy   # one-shot contract deploy → operator copies address into .env
-npm run genlayer:smoke    # end-to-end studionet check (requires service key + contract addr)
+npm run genlayer:deploy            # one-shot contract deploy → operator copies address into .env
+npm run genlayer:smoke              # end-to-end studionet check (requires service key + contract addr)
+npm run genlayer:smoke:ephemeral    # single-process deploy + smoke with an in-memory key (never persisted)
 ```
 
 `scripts/deploy-and-smoke-ephemeral.ts` is a one-shot variant that generates a temporary

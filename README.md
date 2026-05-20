@@ -26,3 +26,18 @@ Reason: it best matches the goal of serving broad consumer users while still usi
 GenLayer where it creates clear differentiation: multi-agent decision consensus,
 portable decision receipts, and optional wallet-backed ownership of premium
 preferences or saved decisions.
+
+## GenLayer Studionet ops
+
+Phase 3B persists a decision receipt on GenLayer Studionet via a service account
+(server-side) or the user's wallet. Operator procedures, env setup, smoke commands,
+and `503` recovery live in the runbook.
+
+- Runbook: [docs/runbook/genlayer-service-account.md](docs/runbook/genlayer-service-account.md)
+- Architecture: [docs/architecture/05-phase3b-genlayer-integration.md](docs/architecture/05-phase3b-genlayer-integration.md)
+
+```bash
+npm run genlayer:deploy             # deploy ChoiceLensDecisionRegistry → copy address into env
+npm run genlayer:smoke              # end-to-end check against the configured contract
+npm run genlayer:smoke:ephemeral    # single-process deploy + smoke with an in-memory key
+```

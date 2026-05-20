@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "genlayer:deploy": "tsx scripts/deploy-registry.ts",
-    "genlayer:smoke": "tsx scripts/check-studionet.ts"
+    "genlayer:smoke": "tsx scripts/check-studionet.ts",
+    "genlayer:smoke:ephemeral": "tsx scripts/deploy-and-smoke-ephemeral.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
