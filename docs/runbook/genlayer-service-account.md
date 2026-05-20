@@ -8,6 +8,27 @@ The service account is a single private key stored in `GENLAYER_SERVICE_PRIVATE_
 
 If the key is unset, the service path returns `503 service_account_unavailable` and the frontend falls back to the off-chain receipt CTA.
 
+## Verified operator deploy (Studionet)
+
+Captured 2026-05-20 from `npm run genlayer:deploy` + `npm run genlayer:smoke`
+against `https://studio.genlayer.com/api` with the runner-pinned contract
+(commit `e02047e`). Use this as the canonical operator-owned contract until a
+key rotation requires a fresh deploy.
+
+| Field | Value |
+| --- | --- |
+| Service address (publishable) | `0x8Bd2B4e8B5860b09DbdF566D95e44D29c2c9E32c` |
+| Deploy tx | `0x6e8a14ae19a9b5c5b432172569897f17b448fd613196f6437209f55bdc86bba` |
+| Operator contract | `0xD7E2910DBbCb701992591b4285985a3Ad0e0A418` |
+| Smoke tx (`create_receipt`) | `0xafee3bdcd4744e5933c00ad5bbace0d6f3ac01f561bfd6444570bb22f6c8f806` |
+| Status | `FINALIZED` |
+| Execution result | `SUCCESS` (`[smoke] OK`) |
+
+The matching `GENLAYER_SERVICE_PRIVATE_KEY` lives only in the operator's secret
+manager / local `.env` — never in this repo. To rotate, run the operator
+checklist below end-to-end and only swap `GENLAYER_CONTRACT_ADDRESS` after
+`npm run genlayer:smoke` reports `SUCCESS` against the new deploy.
+
 ## Operator checklist
 
 For a fresh production / staging bring-up:
@@ -21,11 +42,11 @@ For a fresh production / staging bring-up:
 3. **Set the four server secrets** in the host:
    - `GENLAYER_NETWORK=studionet`
    - `GENLAYER_RPC_URL=https://studio.genlayer.com/api`
-   - `GENLAYER_CONTRACT_ADDRESS=0x8c050968E9D923C7C2612F58aE965723964Ea770`
+   - `GENLAYER_CONTRACT_ADDRESS=0xD7E2910DBbCb701992591b4285985a3Ad0e0A418`
    - `GENLAYER_SERVICE_PRIVATE_KEY=<from step 1>`
 4. **Mirror the public values** for the browser bundle:
    - `NEXT_PUBLIC_GENLAYER_NETWORK=studionet`
-   - `NEXT_PUBLIC_GENLAYER_CONTRACT_ADDRESS=0x8c050968E9D923C7C2612F58aE965723964Ea770`
+   - `NEXT_PUBLIC_GENLAYER_CONTRACT_ADDRESS=0xD7E2910DBbCb701992591b4285985a3Ad0e0A418`
    - `NEXT_PUBLIC_GENLAYER_CHAIN_ID=...`
    - `NEXT_PUBLIC_GENLAYER_RPC_URL=https://studio.genlayer.com/api`
 5. **Smoke test the live deploy:**

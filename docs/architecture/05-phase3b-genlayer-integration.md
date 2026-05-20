@@ -77,7 +77,7 @@ npm run genlayer:smoke:ephemeral    # single-process deploy + smoke with an in-m
 `scripts/deploy-and-smoke-ephemeral.ts` is a one-shot variant that generates a temporary
 private key in-process for ad-hoc Studionet validation; it never writes the key to disk.
 
-See `docs/runbook/genlayer-service-account.md` for top-up, rotation, and `503` recovery.
+See `docs/runbook/genlayer-service-account.md` for top-up, rotation, and `503` recovery. The current canonical operator-owned Studionet contract is `0xD7E2910DBbCb701992591b4285985a3Ad0e0A418` (deploy tx `0x6e8a14ae19a9b5c5b432172569897f17b448fd613196f6437209f55bdc86bba`, smoke tx `0xafee3bdcd4744e5933c00ad5bbace0d6f3ac01f561bfd6444570bb22f6c8f806`, both `FINALIZED` / `SUCCESS`).
 
 ## Contract storage notes
 
