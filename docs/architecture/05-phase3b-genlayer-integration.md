@@ -82,6 +82,9 @@ See `docs/runbook/genlayer-service-account.md` for top-up, rotation, and `503` r
 ## Contract storage notes
 
 `ChoiceLensDecisionRegistry.py` uses GenVM-friendly types only:
+- The contract pins `py-genlayer` to a concrete runner hash in the `Depends`
+  header. Studionet non-debug deploys reject `:test` / `:latest` runners with
+  `invalid_contract` before schema generation.
 - `@allow_storage @dataclass` for the `Receipt` struct (custom storage classes must be both).
 - Hash fields are `str` (`0x`-prefixed hex). The runtime's `bytes` storage codec rejects
   Python `str`, and genlayer-js sends hex args as Python `str`, so we keep the wire type aligned.
