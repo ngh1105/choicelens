@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Copy, ExternalLink, RotateCw } from "lucide-react";
 import type { ReceiptStatus } from "@/lib/genlayer";
 import { ReceiptStatusPill } from "./ReceiptStatusPill";
@@ -37,28 +37,71 @@ interface CopyButtonProps {
 
 function CopyButton({ value, label }: CopyButtonProps) {
   const [copied, setCopied] = useState<boolean>(false);
+  const [failed, setFailed] = useState<boolean>(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, []);
 
   async function handleCopy() {
-    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    if (timeoutRef.current !== null) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setFailed(true);
+      timeoutRef.current = setTimeout(() => {
+        setFailed(false);
+        timeoutRef.current = null;
+      }, 1500);
+      return;
+    }
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // ignore clipboard failures (denied permissions, etc.)
+      setFailed(false);
+      timeoutRef.current = setTimeout(() => {
+        setCopied(false);
+        timeoutRef.current = null;
+      }, 1500);
+    } catch (err) {
+      console.error(`copy ${label} failed`, err);
+      setFailed(true);
+      timeoutRef.current = setTimeout(() => {
+        setFailed(false);
+        timeoutRef.current = null;
+      }, 1500);
     }
   }
 
+  const ariaLabel = copied
+    ? `${label} copied`
+    : failed
+    ? `Could not copy ${label}`
+    : `Copy ${label}`;
+
   return (
-    <button
-      type="button"
-      className="receipt-copy"
-      onClick={handleCopy}
-      data-copied={copied ? "true" : undefined}
-      aria-label={copied ? `${label} copied` : `Copy ${label}`}
-    >
-      {copied ? <Check size={12} /> : <Copy size={12} />}
-    </button>
+    <>
+      <button
+        type="button"
+        className="receipt-copy"
+        onClick={handleCopy}
+        data-copied={copied ? "true" : undefined}
+        data-failed={failed ? "true" : undefined}
+        aria-label={ariaLabel}
+      >
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+      </button>
+      <span role="status" aria-live="polite" className="visually-hidden">
+        {copied ? `${label} copied` : failed ? `Could not copy ${label}` : ""}
+      </span>
+    </>
   );
 }
 
