@@ -801,7 +801,7 @@ function ScoreTable({
                     <span className="score-bar" aria-hidden>
                       <span
                         className="score-bar-fill"
-                        style={{ ["--bar-width" as string]: `${score}%` }}
+                        style={{ "--bar-width": `${score}%` } as React.CSSProperties}
                       />
                     </span>
                     {score}
