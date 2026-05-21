@@ -178,11 +178,12 @@ export default async function GenLayerAdminPage() {
           <dl className="admin-counts-grid">
             {counts.map(([label, value]) => {
               const tone = COUNT_TONE[label] ?? "neutral";
-              const toneClass = tone === "neutral" ? "" : `tone-${tone}`;
+              const classes = ["admin-count-tile"];
+              if (tone !== "neutral") classes.push(`tone-${tone}`);
               return (
                 <div
                   key={label}
-                  className={`admin-count-tile ${toneClass}`.trim()}
+                  className={classes.join(" ")}
                 >
                   <dt>{label}</dt>
                   <dd>{value}</dd>
