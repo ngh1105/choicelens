@@ -795,15 +795,16 @@ function ScoreTable({
               <td>{row.name}</td>
               {AGENT_ORDER.map((a) => {
                 const s = row.agentScores.find((x) => x.agent === a);
+                const score = s?.score ?? 0;
                 return (
                   <td key={a} className="score-cell">
                     <span className="score-bar" aria-hidden>
                       <span
                         className="score-bar-fill"
-                        style={{ width: `${s?.score ?? 0}%` }}
+                        style={{ ["--bar-width" as string]: `${score}%` }}
                       />
                     </span>
-                    {s?.score ?? 0}
+                    {score}
                   </td>
                 );
               })}

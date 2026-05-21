@@ -1,6 +1,7 @@
 "use client";
 
-import { ExternalLink, RotateCw } from "lucide-react";
+import { useState } from "react";
+import { Check, Copy, ExternalLink, RotateCw } from "lucide-react";
 import type { ReceiptStatus } from "@/lib/genlayer";
 import { ReceiptStatusPill } from "./ReceiptStatusPill";
 
@@ -29,6 +30,38 @@ function explorerUrl(network: string, txHash: string): string | null {
   return null;
 }
 
+interface CopyButtonProps {
+  value: string;
+  label: string;
+}
+
+function CopyButton({ value, label }: CopyButtonProps) {
+  const [copied, setCopied] = useState<boolean>(false);
+
+  async function handleCopy() {
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore clipboard failures (denied permissions, etc.)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="receipt-copy"
+      onClick={handleCopy}
+      data-copied={copied ? "true" : undefined}
+      aria-label={copied ? `${label} copied` : `Copy ${label}`}
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+    </button>
+  );
+}
+
 export function ReceiptCard({ receipt, pollingError, onRetry }: ReceiptCardProps) {
   const explorer = receipt.transactionHash
     ? explorerUrl(receipt.network, receipt.transactionHash)
@@ -46,11 +79,17 @@ export function ReceiptCard({ receipt, pollingError, onRetry }: ReceiptCardProps
       </div>
       <div className="receipt-row">
         <span className="receipt-key">Receipt</span>
-        <span className="receipt-val">{receipt.id}</span>
+        <span className="receipt-val">
+          {receipt.id}
+          <CopyButton value={receipt.id} label="receipt id" />
+        </span>
       </div>
       <div className="receipt-row">
         <span className="receipt-key">Payload</span>
-        <span className="receipt-val">{receipt.payloadHash}</span>
+        <span className="receipt-val">
+          {receipt.payloadHash}
+          <CopyButton value={receipt.payloadHash} label="payload hash" />
+        </span>
       </div>
       <div className="receipt-row">
         <span className="receipt-key">Network</span>
@@ -60,6 +99,9 @@ export function ReceiptCard({ receipt, pollingError, onRetry }: ReceiptCardProps
         <span className="receipt-key">Tx hash</span>
         <span className="receipt-val">
           {receipt.transactionHash ?? "-"}
+          {receipt.transactionHash ? (
+            <CopyButton value={receipt.transactionHash} label="transaction hash" />
+          ) : null}
           {explorer ? (
             <a
               className="receipt-link"

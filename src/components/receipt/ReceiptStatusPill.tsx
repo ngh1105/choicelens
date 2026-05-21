@@ -14,7 +14,14 @@ const LABELS: Record<ReceiptStatus, PillConfig> = {
   failed: { text: "Failed", className: "receipt-pill receipt-pill-danger" },
 };
 
+const PULSING: ReadonlySet<ReceiptStatus> = new Set(["pending", "accepted"]);
+
 export function ReceiptStatusPill({ status }: { status: ReceiptStatus }) {
   const cfg = LABELS[status];
-  return <span className={cfg.className}>{cfg.text}</span>;
+  const pulse = PULSING.has(status);
+  return (
+    <span className={cfg.className} data-pulse={pulse ? "true" : undefined}>
+      {cfg.text}
+    </span>
+  );
 }
