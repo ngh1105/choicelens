@@ -75,6 +75,7 @@ select {
   min-height: 100vh;
 }
 
+/* z-index: 10 keeps header above panels but below RainbowKit's modal portal (z-index >= 1000). */
 .app-header {
   display: flex;
   align-items: center;
