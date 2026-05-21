@@ -528,7 +528,6 @@ input[type="range"]::-moz-range-thumb {
   }
   @keyframes barFill {
     from { width: 0%; }
-    to { width: var(--bar-width, 0%); }
   }
 }
 
