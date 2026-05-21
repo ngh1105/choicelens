@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
 import { ReceiptCard, type ReceiptCardData } from "../ReceiptCard";
 
 const BASE_RECEIPT: ReceiptCardData = {
@@ -15,13 +15,16 @@ const BASE_RECEIPT: ReceiptCardData = {
 describe("ReceiptCard CopyButton", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    Object.assign(navigator, {
+    vi.stubGlobal("navigator", {
+      ...navigator,
       clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
   });
 
   afterEach(() => {
+    cleanup();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -61,5 +64,58 @@ describe("ReceiptCard CopyButton", () => {
       vi.advanceTimersByTime(2);
     });
     expect(screen.getByLabelText(/^copy receipt id$/i)).toBeTruthy();
+  });
+
+  it("marks the button as failed when clipboard.writeText rejects", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      clipboard: {
+        writeText: vi
+          .fn()
+          .mockRejectedValue(new DOMException("denied", "NotAllowedError")),
+      },
+    });
+    render(<ReceiptCard receipt={BASE_RECEIPT} pollingError={null} />);
+    const btn = screen.getByLabelText(/copy receipt id/i);
+    await act(async () => {
+      fireEvent.click(btn);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(btn.getAttribute("data-failed")).toBe("true");
+    expect(btn.getAttribute("aria-label")).toMatch(/could not copy receipt id/i);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it("does not announce 'copied' when a second copy fails inside the success window", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const writeText = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new DOMException("denied", "NotAllowedError"));
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      clipboard: { writeText },
+    });
+    render(<ReceiptCard receipt={BASE_RECEIPT} pollingError={null} />);
+    const btn = screen.getByLabelText(/copy receipt id/i);
+    await act(async () => {
+      fireEvent.click(btn);
+      await Promise.resolve();
+    });
+    expect(btn.getAttribute("data-copied")).toBe("true");
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    await act(async () => {
+      fireEvent.click(btn);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(btn.getAttribute("data-copied")).not.toBe("true");
+    expect(btn.getAttribute("data-failed")).toBe("true");
+    expect(btn.getAttribute("aria-label")).toMatch(/could not copy receipt id/i);
+    expect(errorSpy).toHaveBeenCalled();
   });
 });

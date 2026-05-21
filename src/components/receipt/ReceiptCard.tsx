@@ -55,6 +55,7 @@ function CopyButton({ value, label }: CopyButtonProps) {
       timeoutRef.current = null;
     }
     if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopied(false);
       setFailed(true);
       timeoutRef.current = setTimeout(() => {
         setFailed(false);
@@ -72,6 +73,7 @@ function CopyButton({ value, label }: CopyButtonProps) {
       }, 1500);
     } catch (err) {
       console.error(`copy ${label} failed`, err);
+      setCopied(false);
       setFailed(true);
       timeoutRef.current = setTimeout(() => {
         setFailed(false);
