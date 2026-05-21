@@ -75,6 +75,7 @@ select {
   min-height: 100vh;
 }
 
+/* z-index: 10 keeps header above panels but below RainbowKit's modal portal (z-index >= 1000). */
 .app-header {
   display: flex;
   align-items: center;
@@ -528,7 +529,6 @@ input[type="range"]::-moz-range-thumb {
   }
   @keyframes barFill {
     from { width: 0%; }
-    to { width: var(--bar-width, 0%); }
   }
 }
 
@@ -642,6 +642,10 @@ input[type="range"]::-moz-range-thumb {
 
 .receipt-copy[data-copied="true"] {
   color: var(--positive);
+}
+
+.receipt-copy[data-failed="true"] {
+  color: var(--danger);
 }
 
 .receipt-row {
@@ -977,4 +981,16 @@ input[type="range"]::-moz-range-thumb {
 
 .admin-errors-row .err-time {
   color: var(--text-muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
