@@ -29,6 +29,15 @@ const TONE_CLASS: Record<Tone, string> = {
   danger: "receipt-pill-danger",
 };
 
+const COUNT_TONE: Record<string, Tone | "neutral"> = {
+  finalized: "ok",
+  finalized_with_error: "warn",
+  failed: "danger",
+  submitted: "neutral",
+  accepted: "neutral",
+  off_chain_only: "neutral",
+};
+
 function deriveServiceAddress(key: string | undefined): string | null {
   const summary = summariseServiceKey(key);
   if (!summary.present || !summary.formatValid) return null;
@@ -95,22 +104,21 @@ export default async function GenLayerAdminPage() {
     ["failed", snapshot.counts24h.failed],
   ];
 
+  const serviceKeyClass =
+    snapshot.serviceKeyPresent && !snapshot.serviceKeyFormatValid
+      ? "is-bad"
+      : "";
+  const serviceKeyText = snapshot.serviceKeyPresent
+    ? snapshot.serviceKeyFormatValid
+      ? "present (format ok)"
+      : "present (BAD FORMAT)"
+    : "missing";
+
   return (
-    <main
-      style={{
-        maxWidth: 760,
-        margin: "0 auto",
-        padding: "32px 20px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-      }}
-    >
-      <header style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+    <main className="admin-shell">
+      <header className="admin-header">
         <span className="field-label">GenLayer ops</span>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>
-          Operator health
-        </h1>
+        <h1 className="admin-h1">Operator health</h1>
         <p className="section-helper">
           Read-only. No secrets. Updated{" "}
           {new Date(snapshot.checkedAt).toLocaleString()}.
@@ -118,23 +126,18 @@ export default async function GenLayerAdminPage() {
       </header>
 
       <section className="panel">
+        <div className={`admin-state-strip tone-${pill.tone}`} />
         <div className="panel-header">
           <span className="panel-title">Operator state</span>
           <span className={`receipt-pill ${TONE_CLASS[pill.tone]}`}>
             {pill.label}
           </span>
         </div>
-        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <code style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>
-            {snapshot.operatorState}
-          </code>
-          <p style={{ margin: 0, color: "var(--text-soft)" }}>{remediation}</p>
+        <div className="panel-body admin-panel-body-stack">
+          <code className="admin-state-code">{snapshot.operatorState}</code>
+          <p className="admin-state-text">{remediation}</p>
           {snapshot.killSwitchActive ? (
-            <p
-              className="receipt-error"
-              style={{ marginTop: 4 }}
-              role="status"
-            >
+            <p className="receipt-error" role="status">
               <span>Kill switch active — receipts run off-chain.</span>
             </p>
           ) : null}
@@ -146,72 +149,17 @@ export default async function GenLayerAdminPage() {
           <span className="panel-title">Configuration</span>
         </div>
         <div className="panel-body">
-          <dl
-            style={{
-              margin: 0,
-              display: "grid",
-              gridTemplateColumns: "max-content minmax(0, 1fr)",
-              gap: "8px 16px",
-              fontSize: 13,
-            }}
-          >
-            <dt style={{ color: "var(--text-muted)" }}>Network</dt>
-            <dd
-              style={{
-                margin: 0,
-                fontFamily: "var(--font-mono)",
-                color: "var(--text-soft)",
-              }}
-            >
-              {snapshot.network}
-            </dd>
-            <dt style={{ color: "var(--text-muted)" }}>Contract</dt>
-            <dd
-              style={{
-                margin: 0,
-                fontFamily: "var(--font-mono)",
-                color: "var(--text-soft)",
-              }}
-            >
-              {snapshot.contractAddressRedacted ?? "—"}
-            </dd>
-            <dt style={{ color: "var(--text-muted)" }}>Service key</dt>
-            <dd
-              style={{
-                margin: 0,
-                fontFamily: "var(--font-mono)",
-                color: snapshot.serviceKeyPresent && !snapshot.serviceKeyFormatValid
-                  ? "var(--danger)"
-                  : "var(--text-soft)",
-              }}
-            >
-              {snapshot.serviceKeyPresent
-                ? snapshot.serviceKeyFormatValid
-                  ? "present (format ok)"
-                  : "present (BAD FORMAT)"
-                : "missing"}
-            </dd>
-            <dt style={{ color: "var(--text-muted)" }}>Service address</dt>
-            <dd
-              style={{
-                margin: 0,
-                fontFamily: "var(--font-mono)",
-                color: "var(--text-soft)",
-                wordBreak: "break-all",
-              }}
-            >
-              {snapshot.serviceAddress ?? "—"}
-            </dd>
-            <dt style={{ color: "var(--text-muted)" }}>RPC URL</dt>
-            <dd
-              style={{
-                margin: 0,
-                fontFamily: "var(--font-mono)",
-                color: "var(--text-soft)",
-              }}
-            >
-              {snapshot.rpcUrlConfigured ? "configured" : "missing"}
-            </dd>
+          <dl className="admin-config-grid">
+            <dt>Network</dt>
+            <dd>{snapshot.network}</dd>
+            <dt>Contract</dt>
+            <dd>{snapshot.contractAddressRedacted ?? "—"}</dd>
+            <dt>Service key</dt>
+            <dd className={serviceKeyClass}>{serviceKeyText}</dd>
+            <dt>Service address</dt>
+            <dd>{snapshot.serviceAddress ?? "—"}</dd>
+            <dt>RPC URL</dt>
+            <dd>{snapshot.rpcUrlConfigured ? "configured" : "missing"}</dd>
           </dl>
         </div>
       </section>
@@ -227,38 +175,20 @@ export default async function GenLayerAdminPage() {
           </span>
         </div>
         <div className="panel-body">
-          <dl
-            style={{
-              margin: 0,
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-              gap: 12,
-            }}
-          >
-            {counts.map(([label, value]) => (
-              <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <dt
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                  }}
+          <dl className="admin-counts-grid">
+            {counts.map(([label, value]) => {
+              const tone = COUNT_TONE[label] ?? "neutral";
+              const toneClass = tone === "neutral" ? "" : `tone-${tone}`;
+              return (
+                <div
+                  key={label}
+                  className={`admin-count-tile ${toneClass}`.trim()}
                 >
-                  {label}
-                </dt>
-                <dd
-                  style={{
-                    margin: 0,
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 18,
-                    fontWeight: 600,
-                  }}
-                >
-                  {value}
-                </dd>
-              </div>
-            ))}
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              );
+            })}
           </dl>
         </div>
       </section>
@@ -269,28 +199,17 @@ export default async function GenLayerAdminPage() {
         </div>
         <div className="panel-body">
           {snapshot.recentErrors.length === 0 ? (
-            <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 13 }}>
-              None.
-            </p>
+            <p className="admin-errors-empty">None.</p>
           ) : (
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+            <ul className="admin-errors-list">
               {snapshot.recentErrors.map((e) => (
                 <li
                   key={`${e.comparisonId}-${e.createdAt}`}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) auto auto",
-                    gap: 12,
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 12,
-                    color: "var(--text-soft)",
-                  }}
+                  className="admin-errors-row"
                 >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {e.comparisonId}
-                  </span>
-                  <span style={{ color: "var(--danger)" }}>{e.errorCode}</span>
-                  <span style={{ color: "var(--text-muted)" }}>
+                  <span className="err-id">{e.comparisonId}</span>
+                  <span className="err-code">{e.errorCode}</span>
+                  <span className="err-time">
                     {new Date(e.createdAt).toLocaleString()}
                   </span>
                 </li>
