@@ -158,7 +158,7 @@ export function WalletReceiptControls({
             type="button"
             className="btn"
             onClick={handleSwitch}
-            disabled={isSwitching}
+            disabled={disabled || isSwitching}
           >
             <ArrowRightLeft size={14} />
             {isSwitching ? "Switching..." : "Switch network"}

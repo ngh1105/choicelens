@@ -52,12 +52,37 @@ interface ReceiptRecord extends DecisionReceipt {
   comparisonId: string;
 }
 
+type UsageFeature = "comparisons" | "watchlist" | "receipts";
+
+interface UsageMetric {
+  used: number;
+  limit: number | null;
+  remaining: number | null;
+  percent: number | null;
+  blocked: boolean;
+}
+
+interface UsageSummary {
+  plan: "free" | "plus" | "pro";
+  resetAt: string;
+  usage: Record<UsageFeature, UsageMetric>;
+}
+
 class ApiRequestError extends Error {
   status: number;
+  code: string | null;
+  feature: UsageFeature | null;
 
-  constructor(status: number, message: string) {
+  constructor(
+    status: number,
+    message: string,
+    code: string | null = null,
+    feature: UsageFeature | null = null,
+  ) {
     super(message);
     this.status = status;
+    this.code = code;
+    this.feature = feature;
     this.name = "ApiRequestError";
   }
 }
@@ -76,18 +101,58 @@ async function fetchJson<T>(
     const detail = isRecord(payload)
       ? payload.message ?? payload.error
       : null;
+    const code = isRecord(payload) && typeof payload.error === "string"
+      ? payload.error
+      : null;
+    const feature = isRecord(payload) && isUsageFeature(payload.feature)
+      ? payload.feature
+      : null;
     throw new ApiRequestError(
       response.status,
       typeof detail === "string"
         ? detail
         : `Request failed (${response.status})`,
+      code,
+      feature,
     );
   }
   return payload as T;
 }
 
+function isUsageFeature(value: unknown): value is UsageFeature {
+  return value === "comparisons" || value === "watchlist" || value === "receipts";
+}
+
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
+}
+
+export function planLimitMessage(err: ApiRequestError, fallback: string): string {
+  if (err.code !== "plan_limit_reached") return err.message || fallback;
+  return `${err.message} Paid plan upgrades are coming soon.`;
+}
+
+export function localLimitMessage(
+  feature: UsageFeature,
+  usage: UsageSummary | null,
+): string {
+  const metric = usage?.usage[feature];
+  if (!metric || metric.limit === null) {
+    return "This Free plan limit has been reached. Paid plan upgrades are coming soon.";
+  }
+  const nouns: Record<UsageFeature, string> = {
+    comparisons: "comparisons",
+    watchlist: "watchlist items",
+    receipts: "receipts",
+  };
+  return `Free plan includes ${metric.limit} ${nouns[feature]}. Paid plan upgrades are coming soon.`;
+}
+
+export function isUsageBlocked(
+  usage: UsageSummary | null,
+  feature: UsageFeature,
+): boolean {
+  return usage?.usage[feature].blocked ?? false;
 }
 
 const STARTER_OPTIONS: OptionInput[] = [
@@ -120,6 +185,8 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [usageError, setUsageError] = useState<string | null>(null);
   const [isComparing, setIsComparing] = useState<boolean>(false);
   const [isSavingWatchlist, setIsSavingWatchlist] = useState<boolean>(false);
   const [removingWatchId, setRemovingWatchId] = useState<string | null>(null);
@@ -131,6 +198,20 @@ export default function HomePage() {
     [options],
   );
   const canCompare = validOptions.length >= 2;
+  const usageBlocksCompare = usage?.usage.comparisons.blocked ?? false;
+  const usageBlocksWatchlist = usage?.usage.watchlist.blocked ?? false;
+  const usageBlocksReceipt = usage?.usage.receipts.blocked ?? false;
+
+  const refreshUsage = useCallback(async () => {
+    try {
+      const payload = await fetchJson<UsageSummary>("/api/usage");
+      setUsage(payload);
+      setUsageError(null);
+    } catch (err) {
+      setUsage(null);
+      setUsageError(errorMessage(err, "Unable to load plan usage."));
+    }
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -139,9 +220,16 @@ export default function HomePage() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const [comparisonPayload, watchlistPayload] = await Promise.all([
+        const [comparisonPayload, watchlistPayload, usagePayload] = await Promise.all([
           fetchJson<{ comparisons: ComparisonRecord[] }>("/api/comparisons"),
           fetchJson<{ watchlist: WatchlistEntry[] }>("/api/watchlist"),
+          fetchJson<UsageSummary>("/api/usage").catch((err) => {
+            if (!ignore) {
+              setUsage(null);
+              setUsageError(errorMessage(err, "Unable to load plan usage."));
+            }
+            return null;
+          }),
         ]);
         if (ignore) return;
 
@@ -165,6 +253,10 @@ export default function HomePage() {
         setResult(latest?.result ?? null);
         setReceipt(latestReceipt);
         setWatchlist(watchlistPayload.watchlist);
+        if (usagePayload) {
+          setUsage(usagePayload);
+          setUsageError(null);
+        }
       } catch (err) {
         if (!ignore) {
           setLoadError(errorMessage(err, "Unable to load saved decisions."));
@@ -209,6 +301,10 @@ export default function HomePage() {
 
   async function handleCompare() {
     if (!canCompare) return;
+    if (usageBlocksCompare) {
+      setActionError(localLimitMessage("comparisons", usage));
+      return;
+    }
     const input: ComparisonInput = {
       prompt,
       options: validOptions,
@@ -230,8 +326,14 @@ export default function HomePage() {
       setComparisonId(payload.comparison.id);
       setResult(payload.comparison.result);
       setReceipt(null);
+      void refreshUsage();
     } catch (err) {
-      setActionError(errorMessage(err, "Unable to run comparison."));
+      if (err instanceof ApiRequestError && err.code === "plan_limit_reached") {
+        setActionError(planLimitMessage(err, "Unable to run comparison."));
+        void refreshUsage();
+      } else {
+        setActionError(errorMessage(err, "Unable to run comparison."));
+      }
     } finally {
       setIsComparing(false);
     }
@@ -250,6 +352,13 @@ export default function HomePage() {
 
   async function handleSaveTopPick() {
     if (!result || !comparisonId) return;
+    const alreadySaved = watchlist.some(
+      (w) => w.payloadHash === result.receiptPayloadHash,
+    );
+    if (usageBlocksWatchlist && !alreadySaved) {
+      setActionError(localLimitMessage("watchlist", usage));
+      return;
+    }
     setIsSavingWatchlist(true);
     setActionError(null);
     try {
@@ -266,8 +375,14 @@ export default function HomePage() {
           ...prev.filter((w) => w.payloadHash !== payload.entry.payloadHash),
         ];
       });
+      void refreshUsage();
     } catch (err) {
-      setActionError(errorMessage(err, "Unable to save top pick."));
+      if (err instanceof ApiRequestError && err.code === "plan_limit_reached") {
+        setActionError(planLimitMessage(err, "Unable to save top pick."));
+        void refreshUsage();
+      } else {
+        setActionError(errorMessage(err, "Unable to save top pick."));
+      }
     } finally {
       setIsSavingWatchlist(false);
     }
@@ -281,10 +396,12 @@ export default function HomePage() {
         method: "DELETE",
       });
       setWatchlist((prev) => prev.filter((w) => w.id !== id));
+      void refreshUsage();
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 404) {
         setWatchlist((prev) => prev.filter((w) => w.id !== id));
         setActionError("That watchlist item was already removed.");
+        void refreshUsage();
       } else {
         setActionError(errorMessage(err, "Unable to remove watchlist item."));
       }
@@ -295,6 +412,10 @@ export default function HomePage() {
 
   async function handleBuildReceipt() {
     if (!result || !comparisonId) return;
+    if (usageBlocksReceipt && !displayReceipt) {
+      setActionError(localLimitMessage("receipts", usage));
+      return;
+    }
     setIsBuildingReceipt(true);
     setActionError(null);
     try {
@@ -304,8 +425,14 @@ export default function HomePage() {
       );
       setReceipt(payload.receipt);
       setPollRestartKey((k) => k + 1);
+      void refreshUsage();
     } catch (err) {
-      setActionError(errorMessage(err, "Unable to build receipt."));
+      if (err instanceof ApiRequestError && err.code === "plan_limit_reached") {
+        setActionError(planLimitMessage(err, "Unable to build receipt."));
+        void refreshUsage();
+      } else {
+        setActionError(errorMessage(err, "Unable to build receipt."));
+      }
     } finally {
       setIsBuildingReceipt(false);
     }
@@ -340,6 +467,11 @@ export default function HomePage() {
 
   const displayReceipt: ReceiptRecord | null =
     (polling.receipt as ReceiptRecord | null) ?? receipt;
+  const currentResultSaved = result
+    ? watchlist.some((w) => w.payloadHash === result.receiptPayloadHash)
+    : false;
+  const saveBlockedByUsage = usageBlocksWatchlist && !currentResultSaved;
+  const receiptBlockedByUsage = usageBlocksReceipt && !displayReceipt;
 
   return (
     <div className="app-shell">
@@ -358,6 +490,15 @@ export default function HomePage() {
             />
             Wallet {isWalletConfigured ? "ready" : "optional"}
           </span>
+          {usage ? (
+            <span className="pill">
+              <span className="pill-dot dot-ok" />
+              {usage.plan === "free" ? "Free plan" : usage.plan}
+              {usage.usage.comparisons.remaining !== null
+                ? ` · ${usage.usage.comparisons.remaining} comparisons left`
+                : " · Unlimited comparisons"}
+            </span>
+          ) : null}
           {isWalletConfigured ? (
             <ConnectButton />
           ) : (
@@ -382,6 +523,7 @@ export default function HomePage() {
             onReset={handleReset}
             canCompare={canCompare}
             isComparing={isComparing}
+            usageBlocked={usageBlocksCompare}
           />
           {isLoading ? (
             <div className="panel">
@@ -416,10 +558,12 @@ export default function HomePage() {
             onSave={handleSaveTopPick}
             canSave={Boolean(comparisonId)}
             isSaving={isSavingWatchlist}
+            saveBlocked={saveBlockedByUsage}
           />
         </section>
 
         <aside className="panel-stack">
+          <UsagePanel usage={usage} usageError={usageError} />
           <WatchlistPanel
             watchlist={watchlist}
             onRemove={handleRemoveWatch}
@@ -437,8 +581,10 @@ export default function HomePage() {
             onWalletReceipt={(record) => {
               setReceipt(record);
               setPollRestartKey((k) => k + 1);
+              void refreshUsage();
             }}
             onWalletError={(message) => setActionError(message)}
+            usageBlocked={receiptBlockedByUsage}
           />
         </aside>
       </main>
@@ -457,6 +603,7 @@ interface ComposerProps {
   onReset: () => void;
   canCompare: boolean;
   isComparing: boolean;
+  usageBlocked: boolean;
 }
 
 function Composer(props: ComposerProps) {
@@ -471,6 +618,7 @@ function Composer(props: ComposerProps) {
     onReset,
     canCompare,
     isComparing,
+    usageBlocked,
   } = props;
 
   return (
@@ -565,10 +713,15 @@ function Composer(props: ComposerProps) {
             className="btn btn-primary"
             type="button"
             onClick={onCompare}
-            disabled={!canCompare || isComparing}
+            disabled={!canCompare || isComparing || usageBlocked}
+            title={usageBlocked ? "Free comparison limit reached" : undefined}
           >
             <Sparkles size={14} />
-            {isComparing ? "Running..." : "Run comparison"}
+            {usageBlocked
+              ? "Limit reached"
+              : isComparing
+              ? "Running..."
+              : "Run comparison"}
           </button>
         </div>
       </div>
@@ -672,9 +825,16 @@ interface ResultViewProps {
   onSave: () => void;
   canSave: boolean;
   isSaving: boolean;
+  saveBlocked: boolean;
 }
 
-function ResultView({ result, onSave, canSave, isSaving }: ResultViewProps) {
+function ResultView({
+  result,
+  onSave,
+  canSave,
+  isSaving,
+  saveBlocked,
+}: ResultViewProps) {
   return (
     <div className="panel">
       <div className="panel-header">
@@ -696,6 +856,7 @@ function ResultView({ result, onSave, canSave, isSaving }: ResultViewProps) {
               onSave={onSave}
               canSave={canSave}
               isSaving={isSaving}
+              saveBlocked={saveBlocked}
             />
             <ScoreTable shortlist={result.shortlist} topId={result.topPick.id} />
             <Signals
@@ -715,11 +876,13 @@ function TopPick({
   onSave,
   canSave,
   isSaving,
+  saveBlocked,
 }: {
   option: ScoredOption;
   onSave: () => void;
   canSave: boolean;
   isSaving: boolean;
+  saveBlocked: boolean;
 }) {
   return (
     <div className="top-pick">
@@ -740,10 +903,15 @@ function TopPick({
           className="btn"
           type="button"
           onClick={onSave}
-          disabled={!canSave || isSaving}
+          disabled={!canSave || isSaving || saveBlocked}
+          title={saveBlocked ? "Free watchlist limit reached" : undefined}
         >
           <Bookmark size={14} />
-          {isSaving ? "Saving..." : "Save to watchlist"}
+          {saveBlocked
+            ? "Watchlist limit"
+            : isSaving
+            ? "Saving..."
+            : "Save to watchlist"}
         </button>
         {option.url ? (
           <a
@@ -867,6 +1035,90 @@ interface WatchlistPanelProps {
   removingId: string | null;
 }
 
+function formatUsage(metric: UsageMetric): string {
+  return metric.limit === null ? `${metric.used} / ∞` : `${metric.used} / ${metric.limit}`;
+}
+
+function UsagePanel({
+  usage,
+  usageError,
+}: {
+  usage: UsageSummary | null;
+  usageError: string | null;
+}) {
+  if (!usage && !usageError) return null;
+  return (
+    <div className="panel usage-panel">
+      <div className="panel-header">
+        <span className="panel-title">Plan usage</span>
+        <span className="panel-subtitle">
+          {usage ? (usage.plan === "free" ? "Free" : usage.plan) : "Unavailable"}
+        </span>
+      </div>
+      <div className="panel-body">
+        {usage ? (
+          <>
+            <div className="usage-list">
+              <UsageRow
+                label="Comparisons"
+                metric={usage.usage.comparisons}
+                resetAt={usage.resetAt}
+              />
+              <UsageRow label="Watchlist" metric={usage.usage.watchlist} />
+              <UsageRow
+                label="Receipts"
+                metric={usage.usage.receipts}
+                resetAt={usage.resetAt}
+              />
+            </div>
+            {(usage.usage.comparisons.blocked ||
+              usage.usage.watchlist.blocked ||
+              usage.usage.receipts.blocked) ? (
+              <p className="section-helper usage-upgrade-note">
+                Paid plan upgrades are coming soon.
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p className="section-helper">{usageError}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UsageRow({
+  label,
+  metric,
+  resetAt,
+}: {
+  label: string;
+  metric: UsageMetric;
+  resetAt?: string;
+}) {
+  return (
+    <div className="usage-row" data-blocked={metric.blocked ? "true" : undefined}>
+      <div>
+        <div className="usage-row-head">
+          <span>{label}</span>
+          <span className="slider-value">{formatUsage(metric)}</span>
+        </div>
+        <div className="usage-bar" aria-hidden>
+          <span
+            className="usage-bar-fill"
+            style={{ "--usage-width": `${metric.percent ?? 0}%` } as React.CSSProperties}
+          />
+        </div>
+        {resetAt ? (
+          <div className="usage-reset">
+            Resets {new Date(resetAt).toLocaleDateString()}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function WatchlistPanel({
   watchlist,
   onRemove,
@@ -923,6 +1175,7 @@ interface ReceiptPanelProps {
   onRetry: () => void;
   onWalletReceipt: (receipt: ReceiptRecord) => void;
   onWalletError: (message: string) => void;
+  usageBlocked: boolean;
 }
 
 function ReceiptPanel({
@@ -936,6 +1189,7 @@ function ReceiptPanel({
   onRetry,
   onWalletReceipt,
   onWalletError,
+  usageBlocked,
 }: ReceiptPanelProps) {
   const [walletBusy, setWalletBusy] = useState<boolean>(false);
   const showWalletControls = isWalletConfigured && isGenLayerWalletPathConfigured;
@@ -956,16 +1210,26 @@ function ReceiptPanel({
             className="btn"
             type="button"
             onClick={onBuild}
-            disabled={!result || !canBuild || isBuilding || walletBusy}
+            disabled={!result || !canBuild || isBuilding || walletBusy || usageBlocked}
+            title={usageBlocked ? "Free receipt limit reached" : undefined}
           >
             <FileSignature size={14} />
-            {isBuilding ? "Building..." : "Build receipt"}
+            {usageBlocked
+              ? "Receipt limit"
+              : isBuilding
+              ? "Building..."
+              : "Build receipt"}
           </button>
         </div>
+        {usageBlocked ? (
+          <div className="section-helper">
+            Free receipt limit reached. Paid plan upgrades are coming soon.
+          </div>
+        ) : null}
         {showWalletControls ? (
           <WalletReceiptControls
             comparisonId={comparisonId}
-            disabled={!result || !canBuild || isBuilding}
+            disabled={!result || !canBuild || isBuilding || usageBlocked}
             onSubmitting={setWalletBusy}
             onSubmitted={(record) => onWalletReceipt(record as ReceiptRecord)}
             onError={onWalletError}

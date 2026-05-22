@@ -603,6 +603,64 @@ input[type="range"]::-moz-range-thumb {
   justify-content: space-between;
 }
 
+.usage-panel .panel-body {
+  padding: 12px 16px;
+}
+
+.usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.usage-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.usage-row[data-blocked="true"] .usage-row-head {
+  color: var(--danger);
+}
+
+.usage-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.usage-bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
+.usage-bar-fill {
+  display: block;
+  height: 100%;
+  width: var(--usage-width, 0%);
+  background: var(--accent-grad);
+}
+
+.usage-row[data-blocked="true"] .usage-bar-fill {
+  background: var(--danger);
+}
+
+.usage-reset {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.usage-upgrade-note {
+  margin: 12px 0 0;
+  color: var(--warn);
+}
+
 .receipt-card {
   display: flex;
   flex-direction: column;
