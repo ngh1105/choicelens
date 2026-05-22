@@ -35,3 +35,11 @@ export async function getDefaultUserId(): Promise<string> {
   }
   return ensureUserPromise;
 }
+
+export async function getDefaultUser(): Promise<{ id: string; plan: string }> {
+  const id = await getDefaultUserId();
+  return prisma.user.findUniqueOrThrow({
+    where: { id },
+    select: { id: true, plan: true },
+  });
+}
