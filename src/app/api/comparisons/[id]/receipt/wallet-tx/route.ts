@@ -2,9 +2,15 @@ import { NextResponse } from "next/server";
 import { getGenLayerService } from "@/lib/genlayer";
 import {
   getComparison,
+  getReceiptForComparison,
   saveReceipt,
   StoreError,
 } from "@/lib/store";
+import {
+  assertWithinPlanLimit,
+  PlanLimitError,
+  planLimitPayload,
+} from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -57,9 +63,13 @@ export async function POST(
     if (!comparison) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
-    // Server derives the receipt shell — payloadHash, contractAddress, network
-    // come from server state, not from the client. The client only contributes
-    // the on-chain proof: tx hash + creator wallet address.
+    const existing = await getReceiptForComparison(id);
+    if (existing) {
+      return NextResponse.json({ receipt: existing });
+    }
+    await assertWithinPlanLimit("receipts");
+
+    // Server derives the receipt shell. The client only contributes tx proof.
     const built = getGenLayerService().buildReceipt(comparison.result);
     const record = await saveReceipt({
       comparisonId: id,
@@ -69,6 +79,9 @@ export async function POST(
     });
     return NextResponse.json({ receipt: record }, { status: 201 });
   } catch (err) {
+    if (err instanceof PlanLimitError) {
+      return NextResponse.json(planLimitPayload(err), { status: 402 });
+    }
     if (err instanceof StoreError && err.code === "comparison_not_found") {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }

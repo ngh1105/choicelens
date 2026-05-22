@@ -11,6 +11,7 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   handle    String   @unique
+  plan      String   @default("free")
   createdAt DateTime @default(now())
 
   comparisons Comparison[]

@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import type { ComparisonInput, ComparisonResult } from "./comparison";
 import type { DecisionReceipt, ReceiptStatus } from "./genlayer";
 import { getDefaultUserId, prisma } from "./db";
+import { assertWithinPlanLimitForUser } from "./usage";
 
 export interface ComparisonRecord {
   id: string;
@@ -36,6 +37,30 @@ export class StoreError extends Error {
     this.code = code;
     this.name = "StoreError";
   }
+}
+
+function isSerializationConflict(err: unknown): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2034"
+  );
+}
+
+async function serializable<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await prisma.$transaction(fn, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (err) {
+      if (!isSerializationConflict(err)) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr;
 }
 
 type DbComparison = {
@@ -132,12 +157,19 @@ export async function saveComparison(args: {
   result: ComparisonResult;
 }): Promise<ComparisonRecord> {
   const userId = await getDefaultUserId();
-  const row = await prisma.comparison.create({
-    data: {
-      userId,
-      input: JSON.stringify(args.input),
-      result: JSON.stringify(args.result),
-    },
+  const row = await serializable(async (tx) => {
+    const user = await tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, plan: true },
+    });
+    await assertWithinPlanLimitForUser(tx, user, "comparisons");
+    return tx.comparison.create({
+      data: {
+        userId,
+        input: JSON.stringify(args.input),
+        result: JSON.stringify(args.result),
+      },
+    });
   });
   return toComparison(row);
 }
@@ -155,18 +187,31 @@ export async function addWatchlistEntry(args: {
   comparisonId: string;
 }): Promise<WatchlistRecord> {
   const userId = await getDefaultUserId();
-  const comparison = await prisma.comparison.findFirst({
-    where: { id: args.comparisonId, userId },
-  });
-  if (!comparison) {
-    throw new StoreError("comparison_not_found", "Comparison not found");
-  }
-  const result = JSON.parse(comparison.result) as ComparisonResult;
-  const top = result.topPick;
-  const payloadHash = result.receiptPayloadHash;
-
-  try {
-    const row = await prisma.watchlistEntry.create({
+  const row = await serializable(async (tx) => {
+    const comparison = await tx.comparison.findFirst({
+      where: { id: args.comparisonId, userId },
+    });
+    if (!comparison) {
+      throw new StoreError("comparison_not_found", "Comparison not found");
+    }
+    const result = JSON.parse(comparison.result) as ComparisonResult;
+    const top = result.topPick;
+    const payloadHash = result.receiptPayloadHash;
+    const existing = await tx.watchlistEntry.findUnique({
+      where: {
+        comparisonId_payloadHash: {
+          comparisonId: comparison.id,
+          payloadHash,
+        },
+      },
+    });
+    if (existing) return existing;
+    const user = await tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, plan: true },
+    });
+    await assertWithinPlanLimitForUser(tx, user, "watchlist");
+    return tx.watchlistEntry.create({
       data: {
         userId,
         comparisonId: comparison.id,
@@ -176,24 +221,8 @@ export async function addWatchlistEntry(args: {
         payloadHash,
       },
     });
-    return toWatchlist(row);
-  } catch (err) {
-    if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
-    ) {
-      const existing = await prisma.watchlistEntry.findUnique({
-        where: {
-          comparisonId_payloadHash: {
-            comparisonId: comparison.id,
-            payloadHash,
-          },
-        },
-      });
-      if (existing) return toWatchlist(existing);
-    }
-    throw err;
-  }
+  });
+  return toWatchlist(row);
 }
 
 export async function removeWatchlistEntry(id: string): Promise<boolean> {
@@ -213,44 +242,56 @@ export async function saveReceipt(args: {
   errorCode?: string | null;
 }): Promise<ReceiptRecord> {
   const userId = await getDefaultUserId();
-  const comparison = await prisma.comparison.findFirst({
-    where: { id: args.comparisonId, userId },
-    select: { id: true },
-  });
-  if (!comparison) {
-    throw new StoreError("comparison_not_found", "Comparison not found");
-  }
   const r = args.receipt;
   const creatorAddress = args.creatorAddress ?? null;
   const executionResult = args.executionResult ?? null;
   const errorCode = args.errorCode ?? null;
-  const row = await prisma.receipt.upsert({
-    where: { comparisonId: comparison.id },
-    create: {
-      id: r.id,
-      comparisonId: comparison.id,
-      payloadHash: r.payloadHash,
-      status: r.status,
-      network: r.network,
-      submitterKind: args.submitterKind,
-      creatorAddress,
-      contractAddress: r.contractAddress,
-      transactionHash: r.transactionHash,
-      executionResult,
-      errorCode,
-      createdAt: new Date(r.createdAt),
-    },
-    update: {
-      payloadHash: r.payloadHash,
-      status: r.status,
-      network: r.network,
-      submitterKind: args.submitterKind,
-      creatorAddress,
-      contractAddress: r.contractAddress,
-      transactionHash: r.transactionHash,
-      executionResult,
-      errorCode,
-    },
+  const row = await serializable(async (tx) => {
+    const comparison = await tx.comparison.findFirst({
+      where: { id: args.comparisonId, userId },
+      select: { id: true },
+    });
+    if (!comparison) {
+      throw new StoreError("comparison_not_found", "Comparison not found");
+    }
+    const existing = await tx.receipt.findUnique({
+      where: { comparisonId: comparison.id },
+    });
+    if (!existing) {
+      const user = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { id: true, plan: true },
+      });
+      await assertWithinPlanLimitForUser(tx, user, "receipts");
+    }
+    return tx.receipt.upsert({
+      where: { comparisonId: comparison.id },
+      create: {
+        id: r.id,
+        comparisonId: comparison.id,
+        payloadHash: r.payloadHash,
+        status: r.status,
+        network: r.network,
+        submitterKind: args.submitterKind,
+        creatorAddress,
+        contractAddress: r.contractAddress,
+        transactionHash: r.transactionHash,
+        executionResult,
+        errorCode,
+        createdAt: new Date(r.createdAt),
+      },
+      update: {
+        payloadHash: r.payloadHash,
+        status: r.status,
+        network: r.network,
+        submitterKind: args.submitterKind,
+        creatorAddress,
+        contractAddress: r.contractAddress,
+        transactionHash: r.transactionHash,
+        executionResult,
+        errorCode,
+      },
+    });
   });
   return toReceipt(row);
 }

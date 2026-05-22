@@ -14,6 +14,11 @@ import {
   updateReceiptStatus,
   type ComparisonRecord,
 } from "@/lib/store";
+import {
+  assertWithinPlanLimit,
+  PlanLimitError,
+  planLimitPayload,
+} from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +93,11 @@ export async function POST(
     if (!comparison) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
+    const existing = await getReceiptForComparison(id);
+    if (existing) {
+      return NextResponse.json({ receipt: existing });
+    }
+    await assertWithinPlanLimit("receipts");
     const svc = getGenLayerService();
     const isMock = (process.env.GENLAYER_NETWORK ?? "mock") === "mock";
     if (isMock || !svc.createDecisionReceipt) {
@@ -125,6 +135,9 @@ export async function POST(
       throw err;
     }
   } catch (err) {
+    if (err instanceof PlanLimitError) {
+      return NextResponse.json(planLimitPayload(err), { status: 402 });
+    }
     if (err instanceof StoreError && err.code === "comparison_not_found") {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }

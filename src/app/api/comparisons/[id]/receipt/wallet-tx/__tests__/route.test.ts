@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 vi.mock("@/lib/store", () => ({
   getComparison: vi.fn(),
+  getReceiptForComparison: vi.fn(),
   saveReceipt: vi.fn(),
   StoreError: class StoreError extends Error {
     code: string;
@@ -21,9 +22,20 @@ vi.mock("@/lib/genlayer", async () => {
   };
 });
 
+vi.mock("@/lib/usage", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/usage")>(
+    "@/lib/usage",
+  );
+  return {
+    ...actual,
+    assertWithinPlanLimit: vi.fn(),
+  };
+});
+
 import { POST } from "../route";
 import * as store from "@/lib/store";
 import * as gl from "@/lib/genlayer";
+import * as usage from "@/lib/usage";
 
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 
@@ -75,6 +87,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.GENLAYER_NETWORK = "studionet";
   process.env.GENLAYER_CONTRACT_ADDRESS = "0xcontract";
+  (usage.assertWithinPlanLimit as ReturnType<typeof vi.fn>).mockResolvedValue(
+    undefined,
+  );
+  (store.getReceiptForComparison as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 });
 
 describe("POST /api/comparisons/[id]/receipt/wallet-tx", () => {
@@ -178,6 +194,69 @@ describe("POST /api/comparisons/[id]/receipt/wallet-tx", () => {
     expect(saveArgs.receipt.payloadHash).toBe("abc12345");
     expect(saveArgs.receipt.transactionHash).toBe(VALID_TX);
     expect(saveArgs.receipt.status).toBe("pending");
+  });
+
+  it("validates request shape before checking receipt limit", async () => {
+    const res = await POST(
+      postReq({ creatorAddress: VALID_ADDR }),
+      ctx("cmp1"),
+    );
+
+    expect(res.status).toBe(400);
+    expect(usage.assertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("returns existing receipt at the receipt limit without creating a new one", async () => {
+    (store.getComparison as ReturnType<typeof vi.fn>).mockResolvedValue(
+      comparisonRecord,
+    );
+    (store.getReceiptForComparison as ReturnType<typeof vi.fn>).mockResolvedValue(
+      baseReceipt,
+    );
+
+    const res = await POST(
+      postReq({ transactionHash: VALID_TX, creatorAddress: VALID_ADDR }),
+      ctx("cmp1"),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ receipt: baseReceipt });
+    expect(usage.assertWithinPlanLimit).not.toHaveBeenCalled();
+    expect(gl.getGenLayerService).not.toHaveBeenCalled();
+    expect(store.saveReceipt).not.toHaveBeenCalled();
+  });
+
+  it("returns 402 when receipt limit blocks a new wallet receipt", async () => {
+    (store.getComparison as ReturnType<typeof vi.fn>).mockResolvedValue(
+      comparisonRecord,
+    );
+    (usage.assertWithinPlanLimit as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new usage.PlanLimitError({
+        feature: "receipts",
+        message: "Free plan includes 5 receipts.",
+        usage: {
+          used: 5,
+          limit: 5,
+          remaining: 0,
+          percent: 100,
+          blocked: true,
+        },
+        resetAt: "2026-06-01T00:00:00.000Z",
+      }),
+    );
+
+    const res = await POST(
+      postReq({ transactionHash: VALID_TX, creatorAddress: VALID_ADDR }),
+      ctx("cmp1"),
+    );
+
+    expect(res.status).toBe(402);
+    expect(await res.json()).toMatchObject({
+      error: "plan_limit_reached",
+      feature: "receipts",
+    });
+    expect(gl.getGenLayerService).not.toHaveBeenCalled();
+    expect(store.saveReceipt).not.toHaveBeenCalled();
   });
 
   it("idempotent replay: second POST with new tx hash upserts (unique key wins)", async () => {

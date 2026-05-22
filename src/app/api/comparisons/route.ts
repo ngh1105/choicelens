@@ -8,6 +8,11 @@ import {
   type PriorityWeights,
 } from "@/lib/comparison";
 import { listComparisons, saveComparison } from "@/lib/store";
+import {
+  assertWithinPlanLimit,
+  PlanLimitError,
+  planLimitPayload,
+} from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -98,10 +103,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
   try {
+    await assertWithinPlanLimit("comparisons");
     const result = runComparison(input);
     const record = await saveComparison({ input, result });
     return NextResponse.json({ comparison: record }, { status: 201 });
   } catch (err) {
+    if (err instanceof PlanLimitError) {
+      return NextResponse.json(planLimitPayload(err), { status: 402 });
+    }
     console.error("POST /api/comparisons failed", err);
     return NextResponse.json(
       { error: "internal_error" },

@@ -32,10 +32,21 @@ vi.mock("@/lib/genlayer", async () => {
   };
 });
 
+vi.mock("@/lib/usage", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/usage")>(
+    "@/lib/usage",
+  );
+  return {
+    ...actual,
+    assertWithinPlanLimit: vi.fn(),
+  };
+});
+
 import { GET, POST } from "../route";
 import * as store from "@/lib/store";
 import * as gl from "@/lib/genlayer";
 import { GenLayerError } from "@/lib/genlayer";
+import * as usage from "@/lib/usage";
 
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const req = () => new Request("http://test/api/comparisons/cmp1/receipt");
@@ -77,6 +88,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.GENLAYER_NETWORK = "mock";
   delete process.env.GENLAYER_CONTRACT_ADDRESS;
+  (usage.assertWithinPlanLimit as ReturnType<typeof vi.fn>).mockResolvedValue(
+    undefined,
+  );
+  (store.getReceiptForComparison as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 });
 
 describe("POST /api/comparisons/[id]/receipt", () => {
@@ -110,6 +125,58 @@ describe("POST /api/comparisons/[id]/receipt", () => {
     expect(body.receipt.status).toBe("off_chain_only");
     expect(fakeSvc.createDecisionReceipt).not.toHaveBeenCalled();
     expect((store.saveReceipt as ReturnType<typeof vi.fn>).mock.calls[0][0].submitterKind).toBe("mock");
+  });
+
+  it("returns existing receipt at the receipt limit without creating a new one", async () => {
+    (store.getComparison as ReturnType<typeof vi.fn>).mockResolvedValue(comparisonRecord);
+    (store.getReceiptForComparison as ReturnType<typeof vi.fn>).mockResolvedValue(
+      baseReceipt,
+    );
+
+    const res = await POST(req(), ctx("cmp1"));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ receipt: baseReceipt });
+    expect(usage.assertWithinPlanLimit).not.toHaveBeenCalled();
+    expect(gl.getGenLayerService).not.toHaveBeenCalled();
+    expect(store.saveReceipt).not.toHaveBeenCalled();
+  });
+
+  it("returns 402 when receipt limit blocks a new receipt", async () => {
+    (store.getComparison as ReturnType<typeof vi.fn>).mockResolvedValue(comparisonRecord);
+    (usage.assertWithinPlanLimit as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new usage.PlanLimitError({
+        feature: "receipts",
+        message: "Free plan includes 5 receipts.",
+        usage: {
+          used: 5,
+          limit: 5,
+          remaining: 0,
+          percent: 100,
+          blocked: true,
+        },
+        resetAt: "2026-06-01T00:00:00.000Z",
+      }),
+    );
+
+    const res = await POST(req(), ctx("cmp1"));
+
+    expect(res.status).toBe(402);
+    expect(await res.json()).toEqual({
+      error: "plan_limit_reached",
+      feature: "receipts",
+      message: "Free plan includes 5 receipts.",
+      usage: {
+        used: 5,
+        limit: 5,
+        remaining: 0,
+        percent: 100,
+        blocked: true,
+      },
+      resetAt: "2026-06-01T00:00:00.000Z",
+    });
+    expect(gl.getGenLayerService).not.toHaveBeenCalled();
+    expect(store.saveReceipt).not.toHaveBeenCalled();
   });
 
   it("uses service path when GENLAYER_NETWORK=studionet", async () => {
