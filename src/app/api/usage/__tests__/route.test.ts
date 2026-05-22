@@ -4,13 +4,32 @@ vi.mock("@/lib/usage", () => ({
   getUsageSummary: vi.fn(),
 }));
 
+vi.mock("@/lib/visitor", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/visitor")>(
+    "@/lib/visitor",
+  );
+  return {
+    ...actual,
+    getOrCreateVisitorUser: vi.fn(),
+  };
+});
+
 import { GET } from "../route";
 import { getUsageSummary } from "@/lib/usage";
+import { getOrCreateVisitorUser } from "@/lib/visitor";
 
 const mockedSummary = vi.mocked(getUsageSummary);
+const mockedVisitor = vi.mocked(getOrCreateVisitorUser);
+const visitor = {
+  id: "user_visitor",
+  plan: "free",
+  visitorId: "v_testvisitor00000000000000000000000000000000",
+  shouldSetCookie: false,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockedVisitor.mockResolvedValue(visitor);
 });
 
 describe("GET /api/usage", () => {
@@ -43,9 +62,10 @@ describe("GET /api/usage", () => {
       },
     });
 
-    const res = await GET();
+    const res = await GET(new Request("http://test/api/usage"));
 
     expect(res.status).toBe(200);
+    expect(mockedSummary).toHaveBeenCalledWith(visitor);
     expect(await res.json()).toEqual({
       plan: "free",
       resetAt: "2026-06-01T00:00:00.000Z",
@@ -79,7 +99,7 @@ describe("GET /api/usage", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockedSummary.mockRejectedValue(new Error("db down"));
 
-    const res = await GET();
+    const res = await GET(new Request("http://test/api/usage"));
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "internal_error" });

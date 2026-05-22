@@ -3,6 +3,7 @@ import {
   buildCreateDecisionReceiptInput,
 } from "@/lib/genlayer";
 import { getComparison, type ComparisonRecord } from "@/lib/store";
+import { getOrCreateVisitorUser, visitorJson } from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
@@ -15,21 +16,22 @@ function deriveCategory(comparison: ComparisonRecord): string {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<NextResponse> {
   const { id } = await context.params;
+  const visitor = await getOrCreateVisitorUser(request);
   try {
-    const comparison = await getComparison(id);
+    const comparison = await getComparison(visitor.id, id);
     if (!comparison) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
+      return visitorJson(visitor, { error: "not_found" }, { status: 404 });
     }
     const input = buildCreateDecisionReceiptInput({
       id: comparison.id,
       category: deriveCategory(comparison),
       result: comparison.result,
     });
-    return NextResponse.json({
+    return visitorJson(visitor, {
       input,
       contractAddress: process.env.GENLAYER_CONTRACT_ADDRESS ?? null,
       network: process.env.GENLAYER_NETWORK ?? "mock",
@@ -39,6 +41,6 @@ export async function GET(
       `GET /api/comparisons/${id}/receipt/build-input failed`,
       err,
     );
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return visitorJson(visitor, { error: "internal_error" }, { status: 500 });
   }
 }

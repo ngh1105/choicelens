@@ -32,12 +32,29 @@ vi.mock("@/lib/usage", async () => {
   };
 });
 
+vi.mock("@/lib/visitor", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/visitor")>(
+    "@/lib/visitor",
+  );
+  return {
+    ...actual,
+    getOrCreateVisitorUser: vi.fn(),
+  };
+});
+
 import { POST } from "../route";
 import * as store from "@/lib/store";
 import * as gl from "@/lib/genlayer";
 import * as usage from "@/lib/usage";
+import { getOrCreateVisitorUser } from "@/lib/visitor";
 
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
+const visitor = {
+  id: "user_visitor",
+  plan: "free",
+  visitorId: "v_testvisitor00000000000000000000000000000000",
+  shouldSetCookie: false,
+};
 
 function postReq(body: unknown): Request {
   return new Request("http://test/api/comparisons/cmp1/receipt/wallet-tx", {
@@ -85,6 +102,7 @@ const VALID_TX = "0xdeadbeef";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getOrCreateVisitorUser).mockResolvedValue(visitor);
   process.env.GENLAYER_NETWORK = "studionet";
   process.env.GENLAYER_CONTRACT_ADDRESS = "0xcontract";
   (usage.assertWithinPlanLimit as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -187,7 +205,16 @@ describe("POST /api/comparisons/[id]/receipt/wallet-tx", () => {
     expect(body.receipt.transactionHash).toBe(VALID_TX);
     expect(body.receipt.creatorAddress).toBe(VALID_ADDR);
 
-    const saveArgs = (store.saveReceipt as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(store.getComparison).toHaveBeenCalledWith("user_visitor", "cmp1");
+    expect(store.getReceiptForComparison).toHaveBeenCalledWith(
+      "user_visitor",
+      "cmp1",
+    );
+    expect(usage.assertWithinPlanLimit).toHaveBeenCalledWith(
+      visitor,
+      "receipts",
+    );
+    const saveArgs = (store.saveReceipt as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(saveArgs.submitterKind).toBe("user");
     expect(saveArgs.creatorAddress).toBe(VALID_ADDR);
     // payloadHash comes from server-built receipt, NOT from request body.
@@ -279,7 +306,7 @@ describe("POST /api/comparisons/[id]/receipt/wallet-tx", () => {
       fakeSvc,
     );
     (store.saveReceipt as ReturnType<typeof vi.fn>).mockImplementation(
-      async (args: { receipt: { transactionHash: string } }) => ({
+      async (_userId: string, args: { receipt: { transactionHash: string } }) => ({
         ...baseReceipt,
         transactionHash: args.receipt.transactionHash,
         creatorAddress: VALID_ADDR,

@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { getDefaultUser, getDefaultUserId, prisma } from "./db";
+import { prisma } from "./db";
 import {
   formatPlanLimitMessage,
   getPlanDefinition,
@@ -32,7 +32,7 @@ export interface PlanLimitPayload {
   resetAt: string;
 }
 
-interface UsageUser {
+export interface UsageUser {
   id: string;
   plan: string;
 }
@@ -92,7 +92,7 @@ export function planLimitPayload(error: PlanLimitError): PlanLimitPayload {
   };
 }
 
-async function getUsageSummaryForUser(
+export async function getUsageSummaryForUser(
   client: Prisma.TransactionClient | typeof prisma,
   user: UsageUser,
   now = new Date(),
@@ -128,16 +128,19 @@ async function getUsageSummaryForUser(
   };
 }
 
-export async function getUsageSummary(now = new Date()): Promise<UsageSummary> {
-  const user = await getDefaultUser();
+export async function getUsageSummary(
+  user: UsageUser,
+  now = new Date(),
+): Promise<UsageSummary> {
   return getUsageSummaryForUser(prisma, user, now);
 }
 
 export async function assertWithinPlanLimit(
+  user: UsageUser,
   feature: UsageFeature,
   now = new Date(),
 ): Promise<void> {
-  const summary = await getUsageSummary(now);
+  const summary = await getUsageSummary(user, now);
   const usage = summary.usage[feature];
   if (!usage.blocked || usage.limit === null) return;
 
@@ -168,9 +171,9 @@ export async function assertWithinPlanLimitForUser(
 }
 
 export async function getExistingWatchlistEntryForComparison(
+  userId: string,
   comparisonId: string,
 ) {
-  const userId = await getDefaultUserId();
   const comparison = await prisma.comparison.findFirst({
     where: { id: comparisonId, userId },
     select: { result: true },
@@ -188,9 +191,9 @@ export async function getExistingWatchlistEntryForComparison(
 }
 
 export async function hasReceiptForComparison(
+  userId: string,
   comparisonId: string,
 ): Promise<boolean> {
-  const userId = await getDefaultUserId();
   const receipt = await prisma.receipt.findFirst({
     where: {
       comparisonId,

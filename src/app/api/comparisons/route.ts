@@ -13,6 +13,7 @@ import {
   PlanLimitError,
   planLimitPayload,
 } from "@/lib/usage";
+import { getOrCreateVisitorUser, visitorJson } from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
@@ -72,13 +73,15 @@ function parseInput(payload: unknown): ComparisonInput | null {
   };
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
+  const visitor = await getOrCreateVisitorUser(request);
   try {
-    const items = await listComparisons();
-    return NextResponse.json({ comparisons: items });
+    const items = await listComparisons(visitor.id);
+    return visitorJson(visitor, { comparisons: items });
   } catch (err) {
     console.error("GET /api/comparisons failed", err);
-    return NextResponse.json(
+    return visitorJson(
+      visitor,
       { error: "internal_error" },
       { status: 500 },
     );
@@ -86,33 +89,37 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const visitor = await getOrCreateVisitorUser(request);
   let payload: unknown;
   try {
     payload = await request.json();
   } catch {
-    return NextResponse.json(
+    return visitorJson(
+      visitor,
       { error: "invalid_json" },
       { status: 400 },
     );
   }
   const input = parseInput(payload);
   if (!input) {
-    return NextResponse.json(
+    return visitorJson(
+      visitor,
       { error: "invalid_input", message: "At least 2 named options are required" },
       { status: 400 },
     );
   }
   try {
-    await assertWithinPlanLimit("comparisons");
+    await assertWithinPlanLimit(visitor, "comparisons");
     const result = runComparison(input);
-    const record = await saveComparison({ input, result });
-    return NextResponse.json({ comparison: record }, { status: 201 });
+    const record = await saveComparison(visitor.id, { input, result });
+    return visitorJson(visitor, { comparison: record }, { status: 201 });
   } catch (err) {
     if (err instanceof PlanLimitError) {
-      return NextResponse.json(planLimitPayload(err), { status: 402 });
+      return visitorJson(visitor, planLimitPayload(err), { status: 402 });
     }
     console.error("POST /api/comparisons failed", err);
-    return NextResponse.json(
+    return visitorJson(
+      visitor,
       { error: "internal_error" },
       { status: 500 },
     );

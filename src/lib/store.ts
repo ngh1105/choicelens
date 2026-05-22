@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import type { ComparisonInput, ComparisonResult } from "./comparison";
 import type { DecisionReceipt, ReceiptStatus } from "./genlayer";
-import { getDefaultUserId, prisma } from "./db";
+import { prisma } from "./db";
 import { assertWithinPlanLimitForUser } from "./usage";
 
 export interface ComparisonRecord {
@@ -135,8 +135,9 @@ function toReceipt(row: DbReceipt): ReceiptRecord {
   };
 }
 
-export async function listComparisons(): Promise<ComparisonRecord[]> {
-  const userId = await getDefaultUserId();
+export async function listComparisons(
+  userId: string,
+): Promise<ComparisonRecord[]> {
   const rows = await prisma.comparison.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
@@ -145,18 +146,20 @@ export async function listComparisons(): Promise<ComparisonRecord[]> {
 }
 
 export async function getComparison(
+  userId: string,
   id: string,
 ): Promise<ComparisonRecord | null> {
-  const userId = await getDefaultUserId();
   const row = await prisma.comparison.findFirst({ where: { id, userId } });
   return row ? toComparison(row) : null;
 }
 
-export async function saveComparison(args: {
-  input: ComparisonInput;
-  result: ComparisonResult;
-}): Promise<ComparisonRecord> {
-  const userId = await getDefaultUserId();
+export async function saveComparison(
+  userId: string,
+  args: {
+    input: ComparisonInput;
+    result: ComparisonResult;
+  },
+): Promise<ComparisonRecord> {
   const row = await serializable(async (tx) => {
     const user = await tx.user.findUniqueOrThrow({
       where: { id: userId },
@@ -174,8 +177,7 @@ export async function saveComparison(args: {
   return toComparison(row);
 }
 
-export async function listWatchlist(): Promise<WatchlistRecord[]> {
-  const userId = await getDefaultUserId();
+export async function listWatchlist(userId: string): Promise<WatchlistRecord[]> {
   const rows = await prisma.watchlistEntry.findMany({
     where: { userId },
     orderBy: { addedAt: "desc" },
@@ -183,10 +185,12 @@ export async function listWatchlist(): Promise<WatchlistRecord[]> {
   return rows.map(toWatchlist);
 }
 
-export async function addWatchlistEntry(args: {
-  comparisonId: string;
-}): Promise<WatchlistRecord> {
-  const userId = await getDefaultUserId();
+export async function addWatchlistEntry(
+  userId: string,
+  args: {
+    comparisonId: string;
+  },
+): Promise<WatchlistRecord> {
   const row = await serializable(async (tx) => {
     const comparison = await tx.comparison.findFirst({
       where: { id: args.comparisonId, userId },
@@ -225,23 +229,27 @@ export async function addWatchlistEntry(args: {
   return toWatchlist(row);
 }
 
-export async function removeWatchlistEntry(id: string): Promise<boolean> {
-  const userId = await getDefaultUserId();
+export async function removeWatchlistEntry(
+  userId: string,
+  id: string,
+): Promise<boolean> {
   const result = await prisma.watchlistEntry.deleteMany({
     where: { id, userId },
   });
   return result.count > 0;
 }
 
-export async function saveReceipt(args: {
-  comparisonId: string;
-  receipt: DecisionReceipt;
-  submitterKind: "service" | "user" | "mock";
-  creatorAddress?: string | null;
-  executionResult?: string | null;
-  errorCode?: string | null;
-}): Promise<ReceiptRecord> {
-  const userId = await getDefaultUserId();
+export async function saveReceipt(
+  userId: string,
+  args: {
+    comparisonId: string;
+    receipt: DecisionReceipt;
+    submitterKind: "service" | "user" | "mock";
+    creatorAddress?: string | null;
+    executionResult?: string | null;
+    errorCode?: string | null;
+  },
+): Promise<ReceiptRecord> {
   const r = args.receipt;
   const creatorAddress = args.creatorAddress ?? null;
   const executionResult = args.executionResult ?? null;
@@ -297,9 +305,9 @@ export async function saveReceipt(args: {
 }
 
 export async function getReceiptForComparison(
+  userId: string,
   comparisonId: string,
 ): Promise<ReceiptRecord | null> {
-  const userId = await getDefaultUserId();
   const comparison = await prisma.comparison.findFirst({
     where: { id: comparisonId, userId },
     select: { id: true },
@@ -311,12 +319,14 @@ export async function getReceiptForComparison(
   return row ? toReceipt(row) : null;
 }
 
-export async function updateReceiptStatus(args: {
-  comparisonId: string;
-  status: ReceiptStatus;
-  executionResult: string | null;
-}): Promise<ReceiptRecord> {
-  const userId = await getDefaultUserId();
+export async function updateReceiptStatus(
+  userId: string,
+  args: {
+    comparisonId: string;
+    status: ReceiptStatus;
+    executionResult: string | null;
+  },
+): Promise<ReceiptRecord> {
   const comparison = await prisma.comparison.findFirst({
     where: { id: args.comparisonId, userId },
     select: { id: true },

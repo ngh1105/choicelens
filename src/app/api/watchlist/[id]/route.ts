@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { removeWatchlistEntry } from "@/lib/store";
+import { getOrCreateVisitorUser, visitorJson } from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
@@ -8,19 +9,21 @@ interface RouteContext {
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<NextResponse> {
   const { id } = await context.params;
+  const visitor = await getOrCreateVisitorUser(request);
   try {
-    const removed = await removeWatchlistEntry(id);
+    const removed = await removeWatchlistEntry(visitor.id, id);
     if (!removed) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
+      return visitorJson(visitor, { error: "not_found" }, { status: 404 });
     }
-    return NextResponse.json({ removed: true });
+    return visitorJson(visitor, { removed: true });
   } catch (err) {
     console.error(`DELETE /api/watchlist/${id} failed`, err);
-    return NextResponse.json(
+    return visitorJson(
+      visitor,
       { error: "internal_error" },
       { status: 500 },
     );
