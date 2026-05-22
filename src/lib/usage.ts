@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { getDefaultUser, getDefaultUserId, prisma } from "./db";
 import {
   formatPlanLimitMessage,
@@ -29,6 +30,11 @@ export interface PlanLimitPayload {
   message: string;
   usage: UsageMetric;
   resetAt: string;
+}
+
+interface UsageUser {
+  id: string;
+  plan: string;
 }
 
 export class PlanLimitError extends Error {
@@ -86,21 +92,24 @@ export function planLimitPayload(error: PlanLimitError): PlanLimitPayload {
   };
 }
 
-export async function getUsageSummary(now = new Date()): Promise<UsageSummary> {
-  const user = await getDefaultUser();
+async function getUsageSummaryForUser(
+  client: Prisma.TransactionClient | typeof prisma,
+  user: UsageUser,
+  now = new Date(),
+): Promise<UsageSummary> {
   const plan = getPlanDefinition(user.plan);
   const { start, reset } = utcMonthWindow(now);
   const [comparisons, watchlist, receipts] = await Promise.all([
-    prisma.comparison.count({
+    client.comparison.count({
       where: {
         userId: user.id,
         createdAt: { gte: start, lt: reset },
       },
     }),
-    prisma.watchlistEntry.count({
+    client.watchlistEntry.count({
       where: { userId: user.id },
     }),
-    prisma.receipt.count({
+    client.receipt.count({
       where: {
         createdAt: { gte: start, lt: reset },
         comparison: { userId: user.id },
@@ -119,11 +128,34 @@ export async function getUsageSummary(now = new Date()): Promise<UsageSummary> {
   };
 }
 
+export async function getUsageSummary(now = new Date()): Promise<UsageSummary> {
+  const user = await getDefaultUser();
+  return getUsageSummaryForUser(prisma, user, now);
+}
+
 export async function assertWithinPlanLimit(
   feature: UsageFeature,
   now = new Date(),
 ): Promise<void> {
   const summary = await getUsageSummary(now);
+  const usage = summary.usage[feature];
+  if (!usage.blocked || usage.limit === null) return;
+
+  throw new PlanLimitError({
+    feature,
+    message: formatPlanLimitMessage(summary.plan, feature, usage.limit),
+    usage,
+    resetAt: summary.resetAt,
+  });
+}
+
+export async function assertWithinPlanLimitForUser(
+  client: Prisma.TransactionClient | typeof prisma,
+  user: UsageUser,
+  feature: UsageFeature,
+  now = new Date(),
+): Promise<void> {
+  const summary = await getUsageSummaryForUser(client, user, now);
   const usage = summary.usage[feature];
   if (!usage.blocked || usage.limit === null) return;
 

@@ -353,7 +353,9 @@ export default function HomePage() {
   async function handleSaveTopPick() {
     if (!result || !comparisonId) return;
     const alreadySaved = watchlist.some(
-      (w) => w.payloadHash === result.receiptPayloadHash,
+      (w) =>
+        w.comparisonId === comparisonId &&
+        w.payloadHash === result.receiptPayloadHash,
     );
     if (usageBlocksWatchlist && !alreadySaved) {
       setActionError(localLimitMessage("watchlist", usage));
@@ -467,8 +469,12 @@ export default function HomePage() {
 
   const displayReceipt: ReceiptRecord | null =
     (polling.receipt as ReceiptRecord | null) ?? receipt;
-  const currentResultSaved = result
-    ? watchlist.some((w) => w.payloadHash === result.receiptPayloadHash)
+  const currentResultSaved = result && comparisonId
+    ? watchlist.some(
+      (w) =>
+        w.comparisonId === comparisonId &&
+        w.payloadHash === result.receiptPayloadHash,
+    )
     : false;
   const saveBlockedByUsage = usageBlocksWatchlist && !currentResultSaved;
   const receiptBlockedByUsage = usageBlocksReceipt && !displayReceipt;
