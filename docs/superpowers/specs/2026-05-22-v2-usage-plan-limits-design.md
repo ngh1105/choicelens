@@ -263,11 +263,15 @@ Add one Prisma migration for `User.plan`.
 
 Rollout order:
 
-1. Ship schema and plan catalog.
-2. Ship derived usage service and `/api/usage`.
-3. Add server gates.
-4. Add UI meter and friendly limit handling.
-5. Verify production smoke: `/`, `/api/usage`, comparison create, watchlist
+1. Add the checked-in Prisma migration and `db:deploy` script.
+2. Ship schema and plan catalog.
+3. Ship derived usage service and `/api/usage`.
+4. Add server gates.
+5. Add UI meter and friendly limit handling.
+6. Before a Vercel auto-deploy reaches production, run
+   `DATABASE_URL="<production-postgres-url>" npm run db:deploy`; the Vercel
+   build only runs Prisma Client generation and does not apply migrations.
+7. Verify production smoke: `/`, `/api/usage`, comparison create, watchlist
    save, receipt create.
 
 Rollback:

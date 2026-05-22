@@ -44,6 +44,7 @@ Expected files:
 |---|---|
 | `prisma/schema.prisma` | Add `User.plan` |
 | `prisma/migrations/**/migration.sql` | Add migration for `User.plan` |
+| `package.json` | Add a production migration deploy script |
 | `src/lib/plans.ts` | New static plan catalog |
 | `src/lib/usage.ts` | New derived usage service and limit helpers |
 | `src/lib/__tests__/plans.test.ts` | New plan catalog tests |
@@ -84,12 +85,16 @@ ALTER TABLE "User" ADD COLUMN "plan" TEXT NOT NULL DEFAULT 'free';
 ```
 
 - Run `npx prisma generate`.
+- Add a `db:deploy` script for production/staging migration application:
+  `prisma migrate deploy`.
 
 Acceptance:
 
 - Prisma Client generation succeeds.
 - Existing users default to `free`.
 - No other schema changes appear.
+- Production/staging releases have an explicit command for applying checked-in
+  migrations before the Vercel app serves code that reads `User.plan`.
 
 Commit:
 
@@ -427,11 +432,19 @@ them with the narrowest applicable message.
 - PR body includes:
   - Summary of Free limits.
   - API changes (`GET /api/usage`, `402 plan_limit_reached`).
-  - Migration note for `User.plan`.
+  - Migration note for `User.plan`, including `npm run db:deploy`.
   - Test plan output.
   - Explicit non-goals: no Stripe, no checkout.
 - Wait for CI.
-- Merge only when green and reviewed/approved according to project practice.
+- Before merging to a Vercel auto-deployed production branch, apply the checked-in
+  migration against the target production database:
+
+```bash
+DATABASE_URL="<production-postgres-url>" npm run db:deploy
+```
+
+- Merge only when CI is green, the production migration has succeeded, and the
+  review/approval requirements are satisfied.
 
 ## 5. Risk And Rollback
 
@@ -448,6 +461,10 @@ Risks:
 - **Local DB unavailable blocks migration verification.**
   Mitigation: generate SQL manually and report that full DB verification needs
   a running Postgres.
+- **Vercel build does not apply Prisma migrations.**
+  Mitigation: run `npm run db:deploy` against the production database before
+  merging to the auto-deployed production branch. If that cannot be done, pause
+  the merge rather than deploying code that reads `User.plan`.
 
 Rollback:
 
