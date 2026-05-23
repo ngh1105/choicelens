@@ -19,7 +19,11 @@ import {
   PlanLimitError,
   planLimitPayload,
 } from "@/lib/usage";
-import { getOrCreateVisitorUser, visitorJson } from "@/lib/visitor";
+import {
+  getOrCreateVisitorUser,
+  visitorJson,
+  type VisitorUser,
+} from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +47,13 @@ export async function GET(
   context: RouteContext,
 ): Promise<NextResponse> {
   const { id } = await context.params;
-  const visitor = await getOrCreateVisitorUser(request);
+  let visitor: VisitorUser;
+  try {
+    visitor = await getOrCreateVisitorUser(request);
+  } catch (err) {
+    console.error(`GET /api/comparisons/${id}/receipt failed`, err);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  }
   try {
     const row = await getReceiptForComparison(visitor.id, id);
     if (!row) {
@@ -91,7 +101,13 @@ export async function POST(
   context: RouteContext,
 ): Promise<NextResponse> {
   const { id } = await context.params;
-  const visitor = await getOrCreateVisitorUser(request);
+  let visitor: VisitorUser;
+  try {
+    visitor = await getOrCreateVisitorUser(request);
+  } catch (err) {
+    console.error(`POST /api/comparisons/${id}/receipt failed`, err);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  }
   try {
     const comparison = await getComparison(visitor.id, id);
     if (!comparison) {

@@ -3,7 +3,11 @@ import {
   buildCreateDecisionReceiptInput,
 } from "@/lib/genlayer";
 import { getComparison, type ComparisonRecord } from "@/lib/store";
-import { getOrCreateVisitorUser, visitorJson } from "@/lib/visitor";
+import {
+  getOrCreateVisitorUser,
+  visitorJson,
+  type VisitorUser,
+} from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +24,16 @@ export async function GET(
   context: RouteContext,
 ): Promise<NextResponse> {
   const { id } = await context.params;
-  const visitor = await getOrCreateVisitorUser(request);
+  let visitor: VisitorUser;
+  try {
+    visitor = await getOrCreateVisitorUser(request);
+  } catch (err) {
+    console.error(
+      `GET /api/comparisons/${id}/receipt/build-input failed`,
+      err,
+    );
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  }
   try {
     const comparison = await getComparison(visitor.id, id);
     if (!comparison) {

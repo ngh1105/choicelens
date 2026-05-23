@@ -105,4 +105,16 @@ describe("GET /api/usage", () => {
     expect(await res.json()).toEqual({ error: "internal_error" });
     expect(errorSpy).toHaveBeenCalled();
   });
+
+  it("returns internal_error when visitor lookup fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockedVisitor.mockRejectedValue(new Error("db down"));
+
+    const res = await GET(new Request("http://test/api/usage"));
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "internal_error" });
+    expect(mockedSummary).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalled();
+  });
 });
