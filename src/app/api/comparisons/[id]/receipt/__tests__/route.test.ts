@@ -42,14 +42,31 @@ vi.mock("@/lib/usage", async () => {
   };
 });
 
+vi.mock("@/lib/visitor", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/visitor")>(
+    "@/lib/visitor",
+  );
+  return {
+    ...actual,
+    getOrCreateVisitorUser: vi.fn(),
+  };
+});
+
 import { GET, POST } from "../route";
 import * as store from "@/lib/store";
 import * as gl from "@/lib/genlayer";
 import { GenLayerError } from "@/lib/genlayer";
 import * as usage from "@/lib/usage";
+import { getOrCreateVisitorUser } from "@/lib/visitor";
 
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const req = () => new Request("http://test/api/comparisons/cmp1/receipt");
+const visitor = {
+  id: "user_visitor",
+  plan: "free",
+  visitorId: "v_testvisitor00000000000000000000000000000000",
+  shouldSetCookie: false,
+};
 
 const comparisonRecord = {
   id: "cmp1",
@@ -86,6 +103,7 @@ const baseReceipt = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getOrCreateVisitorUser).mockResolvedValue(visitor);
   process.env.GENLAYER_NETWORK = "mock";
   delete process.env.GENLAYER_CONTRACT_ADDRESS;
   (usage.assertWithinPlanLimit as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -124,7 +142,15 @@ describe("POST /api/comparisons/[id]/receipt", () => {
     expect(body.receipt.submitterKind).toBe("mock");
     expect(body.receipt.status).toBe("off_chain_only");
     expect(fakeSvc.createDecisionReceipt).not.toHaveBeenCalled();
-    expect((store.saveReceipt as ReturnType<typeof vi.fn>).mock.calls[0][0].submitterKind).toBe("mock");
+    expect(store.getComparison).toHaveBeenCalledWith("user_visitor", "cmp1");
+    expect(usage.assertWithinPlanLimit).toHaveBeenCalledWith(
+      visitor,
+      "receipts",
+    );
+    expect((store.saveReceipt as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
+      "user_visitor",
+    );
+    expect((store.saveReceipt as ReturnType<typeof vi.fn>).mock.calls[0][1].submitterKind).toBe("mock");
   });
 
   it("returns existing receipt at the receipt limit without creating a new one", async () => {
@@ -215,7 +241,7 @@ describe("POST /api/comparisons/[id]/receipt", () => {
     expect(body.receipt.transactionHash).toBe("0xabc");
     expect(body.receipt.status).toBe("pending");
     expect(fakeSvc.createDecisionReceipt).toHaveBeenCalledOnce();
-    const saveArgs = (store.saveReceipt as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const saveArgs = (store.saveReceipt as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(saveArgs.submitterKind).toBe("service");
     expect(saveArgs.creatorAddress).toBe("0xservice");
     expect(saveArgs.receipt.transactionHash).toBe("0xabc");
@@ -302,7 +328,10 @@ describe("GET /api/comparisons/[id]/receipt", () => {
     const body = await res.json();
     expect(body.receipt.status).toBe("accepted");
     expect(fakeSvc.refreshReceiptStatus).toHaveBeenCalledWith("0xabc");
-    expect((store.updateReceiptStatus as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
+    expect((store.updateReceiptStatus as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
+      "user_visitor",
+    );
+    expect((store.updateReceiptStatus as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatchObject({
       comparisonId: "cmp1",
       status: "accepted",
       executionResult: null,

@@ -20,13 +20,30 @@ vi.mock("@/lib/genlayer", async () => {
   };
 });
 
+vi.mock("@/lib/visitor", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/visitor")>(
+    "@/lib/visitor",
+  );
+  return {
+    ...actual,
+    getOrCreateVisitorUser: vi.fn(),
+  };
+});
+
 import { GET } from "../route";
 import * as store from "@/lib/store";
 import * as gl from "@/lib/genlayer";
+import { getOrCreateVisitorUser } from "@/lib/visitor";
 
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const req = () =>
   new Request("http://test/api/comparisons/cmp1/receipt/build-input");
+const visitor = {
+  id: "user_visitor",
+  plan: "free",
+  visitorId: "v_testvisitor00000000000000000000000000000000",
+  shouldSetCookie: false,
+};
 
 const comparisonRecord = {
   id: "cmp1",
@@ -47,6 +64,7 @@ const comparisonRecord = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getOrCreateVisitorUser).mockResolvedValue(visitor);
   process.env.GENLAYER_NETWORK = "studionet";
   process.env.GENLAYER_CONTRACT_ADDRESS = "0xcontract";
 });

@@ -15,10 +15,28 @@ vi.mock("@/lib/usage", async () => {
   };
 });
 
+vi.mock("@/lib/visitor", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/visitor")>(
+    "@/lib/visitor",
+  );
+  return {
+    ...actual,
+    getOrCreateVisitorUser: vi.fn(),
+  };
+});
+
 import { GET, POST } from "../route";
 import { DEFAULT_PRIORITIES } from "@/lib/comparison";
 import * as store from "@/lib/store";
 import * as usage from "@/lib/usage";
+import { getOrCreateVisitorUser } from "@/lib/visitor";
+
+const visitor = {
+  id: "user_visitor",
+  plan: "free",
+  visitorId: "v_testvisitor00000000000000000000000000000000",
+  shouldSetCookie: false,
+};
 
 function postReq(body: unknown): Request {
   return new Request("http://test/api/comparisons", {
@@ -54,6 +72,7 @@ const comparisonRecord = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getOrCreateVisitorUser).mockResolvedValue(visitor);
   vi.mocked(usage.assertWithinPlanLimit).mockResolvedValue(undefined);
 });
 
@@ -61,10 +80,11 @@ describe("GET /api/comparisons", () => {
   it("returns saved comparisons", async () => {
     vi.mocked(store.listComparisons).mockResolvedValue([comparisonRecord]);
 
-    const res = await GET();
+    const res = await GET(new Request("http://test/api/comparisons"));
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ comparisons: [comparisonRecord] });
+    expect(store.listComparisons).toHaveBeenCalledWith("user_visitor");
   });
 });
 
@@ -84,8 +104,14 @@ describe("POST /api/comparisons", () => {
 
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ comparison: comparisonRecord });
-    expect(usage.assertWithinPlanLimit).toHaveBeenCalledWith("comparisons");
-    expect(store.saveComparison).toHaveBeenCalled();
+    expect(usage.assertWithinPlanLimit).toHaveBeenCalledWith(
+      visitor,
+      "comparisons",
+    );
+    expect(store.saveComparison).toHaveBeenCalledWith(
+      "user_visitor",
+      expect.objectContaining({ input }),
+    );
   });
 
   it("returns 402 when comparison limit is reached", async () => {

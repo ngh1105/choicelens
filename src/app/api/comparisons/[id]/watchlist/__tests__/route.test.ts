@@ -23,12 +23,29 @@ vi.mock("@/lib/usage", async () => {
   };
 });
 
+vi.mock("@/lib/visitor", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/visitor")>(
+    "@/lib/visitor",
+  );
+  return {
+    ...actual,
+    getOrCreateVisitorUser: vi.fn(),
+  };
+});
+
 import { POST } from "../route";
 import * as store from "@/lib/store";
 import * as usage from "@/lib/usage";
+import { getOrCreateVisitorUser } from "@/lib/visitor";
 
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const req = () => new Request("http://test/api/comparisons/cmp1/watchlist");
+const visitor = {
+  id: "user_visitor",
+  plan: "free",
+  visitorId: "v_testvisitor00000000000000000000000000000000",
+  shouldSetCookie: false,
+};
 
 const entry = {
   id: "watch1",
@@ -42,6 +59,7 @@ const entry = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getOrCreateVisitorUser).mockResolvedValue(visitor);
   vi.mocked(usage.assertWithinPlanLimit).mockResolvedValue(undefined);
   vi.mocked(usage.getExistingWatchlistEntryForComparison).mockResolvedValue(null);
 });
@@ -54,7 +72,17 @@ describe("POST /api/comparisons/[id]/watchlist", () => {
 
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ entry });
-    expect(usage.assertWithinPlanLimit).toHaveBeenCalledWith("watchlist");
+    expect(usage.getExistingWatchlistEntryForComparison).toHaveBeenCalledWith(
+      "user_visitor",
+      "cmp1",
+    );
+    expect(usage.assertWithinPlanLimit).toHaveBeenCalledWith(
+      visitor,
+      "watchlist",
+    );
+    expect(store.addWatchlistEntry).toHaveBeenCalledWith("user_visitor", {
+      comparisonId: "cmp1",
+    });
   });
 
   it("returns 402 when watchlist limit blocks a new save", async () => {

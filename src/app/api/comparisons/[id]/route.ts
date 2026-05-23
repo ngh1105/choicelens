@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { getComparison } from "@/lib/store";
+import {
+  getOrCreateVisitorUser,
+  visitorJson,
+  type VisitorUser,
+} from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
@@ -8,22 +13,31 @@ interface RouteContext {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<NextResponse> {
   const { id } = await context.params;
+  let visitor: VisitorUser;
   try {
-    const record = await getComparison(id);
+    visitor = await getOrCreateVisitorUser(request);
+  } catch (err) {
+    console.error(`GET /api/comparisons/${id} failed`, err);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+  }
+  try {
+    const record = await getComparison(visitor.id, id);
     if (!record) {
-      return NextResponse.json(
+      return visitorJson(
+        visitor,
         { error: "not_found" },
         { status: 404 },
       );
     }
-    return NextResponse.json({ comparison: record });
+    return visitorJson(visitor, { comparison: record });
   } catch (err) {
     console.error(`GET /api/comparisons/${id} failed`, err);
-    return NextResponse.json(
+    return visitorJson(
+      visitor,
       { error: "internal_error" },
       { status: 500 },
     );

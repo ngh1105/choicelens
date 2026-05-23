@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({
-  getDefaultUser: vi.fn(),
-  getDefaultUserId: vi.fn(),
   prisma: {
     comparison: {
       count: vi.fn(),
@@ -26,15 +24,12 @@ import {
   hasReceiptForComparison,
   PlanLimitError,
 } from "../usage";
-import { getDefaultUser, getDefaultUserId, prisma } from "../db";
+import { prisma } from "../db";
 
-const mockedUser = vi.mocked(getDefaultUser);
-const mockedUserId = vi.mocked(getDefaultUserId);
+const user = { id: "user_1", plan: "free" };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockedUser.mockResolvedValue({ id: "user_1", plan: "free" });
-  mockedUserId.mockResolvedValue("user_1");
   vi.mocked(prisma.comparison.count).mockResolvedValue(0);
   vi.mocked(prisma.watchlistEntry.count).mockResolvedValue(0);
   vi.mocked(prisma.receipt.count).mockResolvedValue(0);
@@ -42,7 +37,7 @@ beforeEach(() => {
 
 describe("usage service", () => {
   it("uses UTC calendar month boundaries", async () => {
-    await getUsageSummary(new Date("2026-05-22T15:30:00.000Z"));
+    await getUsageSummary(user, new Date("2026-05-22T15:30:00.000Z"));
 
     expect(prisma.comparison.count).toHaveBeenCalledWith({
       where: {
@@ -60,7 +55,7 @@ describe("usage service", () => {
     vi.mocked(prisma.watchlistEntry.count).mockResolvedValue(2);
     vi.mocked(prisma.receipt.count).mockResolvedValue(5);
 
-    const summary = await getUsageSummary(new Date("2026-05-22T00:00:00.000Z"));
+    const summary = await getUsageSummary(user, new Date("2026-05-22T00:00:00.000Z"));
 
     expect(summary).toEqual({
       plan: "free",
@@ -92,10 +87,12 @@ describe("usage service", () => {
   });
 
   it("treats paid internal plans as unlimited", async () => {
-    mockedUser.mockResolvedValue({ id: "user_1", plan: "plus" });
     vi.mocked(prisma.comparison.count).mockResolvedValue(200);
 
-    const summary = await getUsageSummary(new Date("2026-05-22T00:00:00.000Z"));
+    const summary = await getUsageSummary(
+      { id: "user_1", plan: "plus" },
+      new Date("2026-05-22T00:00:00.000Z"),
+    );
 
     expect(summary.usage.comparisons).toEqual({
       used: 200,
@@ -110,7 +107,11 @@ describe("usage service", () => {
     vi.mocked(prisma.comparison.count).mockResolvedValue(20);
 
     await expect(
-      assertWithinPlanLimit("comparisons", new Date("2026-05-22T00:00:00.000Z")),
+      assertWithinPlanLimit(
+        user,
+        "comparisons",
+        new Date("2026-05-22T00:00:00.000Z"),
+      ),
     ).rejects.toMatchObject({
       name: "PlanLimitError",
       feature: "comparisons",
@@ -119,8 +120,48 @@ describe("usage service", () => {
     });
 
     await expect(
-      assertWithinPlanLimit("comparisons", new Date("2026-05-22T00:00:00.000Z")),
+      assertWithinPlanLimit(
+        user,
+        "comparisons",
+        new Date("2026-05-22T00:00:00.000Z"),
+      ),
     ).rejects.toBeInstanceOf(PlanLimitError);
+  });
+
+  it("scopes derived usage to the passed visitor user", async () => {
+    vi.mocked(prisma.comparison.count)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(9);
+
+    const userA = await getUsageSummary(
+      { id: "user_a", plan: "free" },
+      new Date("2026-05-22T00:00:00.000Z"),
+    );
+    const userB = await getUsageSummary(
+      { id: "user_b", plan: "free" },
+      new Date("2026-05-22T00:00:00.000Z"),
+    );
+
+    expect(userA.usage.comparisons.used).toBe(3);
+    expect(userB.usage.comparisons.used).toBe(9);
+    expect(prisma.comparison.count).toHaveBeenNthCalledWith(1, {
+      where: {
+        userId: "user_a",
+        createdAt: {
+          gte: new Date("2026-05-01T00:00:00.000Z"),
+          lt: new Date("2026-06-01T00:00:00.000Z"),
+        },
+      },
+    });
+    expect(prisma.comparison.count).toHaveBeenNthCalledWith(2, {
+      where: {
+        userId: "user_b",
+        createdAt: {
+          gte: new Date("2026-05-01T00:00:00.000Z"),
+          lt: new Date("2026-06-01T00:00:00.000Z"),
+        },
+      },
+    });
   });
 
   it("finds existing watchlist entries by comparison payload", async () => {
@@ -131,7 +172,7 @@ describe("usage service", () => {
       id: "watch_1",
     } as never);
 
-    const entry = await getExistingWatchlistEntryForComparison("cmp1");
+    const entry = await getExistingWatchlistEntryForComparison("user_1", "cmp1");
 
     expect(prisma.comparison.findFirst).toHaveBeenCalledWith({
       where: { id: "cmp1", userId: "user_1" },
@@ -151,14 +192,16 @@ describe("usage service", () => {
   it("returns null for existing watchlist lookup when comparison is missing", async () => {
     vi.mocked(prisma.comparison.findFirst).mockResolvedValue(null);
 
-    await expect(getExistingWatchlistEntryForComparison("cmp1")).resolves.toBeNull();
+    await expect(
+      getExistingWatchlistEntryForComparison("user_1", "cmp1"),
+    ).resolves.toBeNull();
     expect(prisma.watchlistEntry.findUnique).not.toHaveBeenCalled();
   });
 
   it("checks receipt ownership before idempotent receipt gating", async () => {
     vi.mocked(prisma.receipt.findFirst).mockResolvedValue({ id: "rcpt_1" } as never);
 
-    await expect(hasReceiptForComparison("cmp1")).resolves.toBe(true);
+    await expect(hasReceiptForComparison("user_1", "cmp1")).resolves.toBe(true);
     expect(prisma.receipt.findFirst).toHaveBeenCalledWith({
       where: {
         comparisonId: "cmp1",
