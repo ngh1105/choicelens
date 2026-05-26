@@ -119,6 +119,20 @@ select {
   color: var(--text-muted);
 }
 
+.app-header-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition: color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+
+.app-header-link:hover {
+  color: var(--text);
+  border-color: var(--border-hairline);
+}
+
 .pill {
   display: inline-flex;
   align-items: center;

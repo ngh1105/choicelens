@@ -490,6 +490,12 @@ export default function HomePage() {
           </span>
         </div>
         <div className="app-header-actions">
+          <a className="app-header-link" href="/pricing">
+            Pricing
+          </a>
+          <a className="app-header-link" href="/account">
+            Account
+          </a>
           <span className="pill">
             <span
               className={`pill-dot ${isWalletConfigured ? "dot-ok" : ""}`}
