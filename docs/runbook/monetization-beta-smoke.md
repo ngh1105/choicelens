@@ -249,7 +249,6 @@ migration:
 
 These are intentionally out of scope for the beta and tracked separately:
 
-- Surface `/account` and `/pricing` in the homepage navigation.
 - Plus annual billing and coupons.
 - Pro self-serve checkout.
 - Team/seats workflow.
