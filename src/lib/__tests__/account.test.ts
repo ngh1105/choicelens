@@ -152,4 +152,157 @@ describe("account helpers", () => {
       expect.anything(),
     ]);
   });
+
+  it("getAccountSummary throws account_not_found when user is missing", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    await expect(getAccountSummary("ghost")).rejects.toMatchObject({
+      code: "account_not_found",
+    });
+  });
+
+  it("parseRecoveryEmail rejects non-string values, oversized strings, and bad shapes", () => {
+    expect(() => parseRecoveryEmail(42)).toThrow("Recovery email is invalid.");
+    expect(() => parseRecoveryEmail({})).toThrow("Recovery email is invalid.");
+    const tooLong = `${"a".repeat(250)}@example.com`;
+    expect(() => parseRecoveryEmail(tooLong)).toThrow();
+    expect(() => parseRecoveryEmail("name @example.com")).toThrow();
+    expect(() => parseRecoveryEmail("name@example")).toThrow();
+    expect(parseRecoveryEmail(null)).toBeNull();
+    expect(parseRecoveryEmail(undefined)).toBeNull();
+  });
+
+  it("createWalletChangeRequest requires a current wallet session", async () => {
+    await expect(
+      createWalletChangeRequest({
+        userId: "user_1",
+        currentWalletAddress: null,
+        requestedWalletAddress: "0x0000000000000000000000000000000000000002",
+      }),
+    ).rejects.toMatchObject({ code: "wallet_session_required" });
+    expect(prisma.walletLinkRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("createWalletChangeRequest rejects non-string requested wallets", async () => {
+    await expect(
+      createWalletChangeRequest({
+        userId: "user_1",
+        currentWalletAddress: "0x0000000000000000000000000000000000000001",
+        requestedWalletAddress: 42,
+      }),
+    ).rejects.toMatchObject({ code: "wallet_invalid" });
+  });
+
+  it("createWalletChangeRequest rejects re-linking the same wallet", async () => {
+    await expect(
+      createWalletChangeRequest({
+        userId: "user_1",
+        currentWalletAddress: "0x0000000000000000000000000000000000000001",
+        requestedWalletAddress: "0x0000000000000000000000000000000000000001",
+      }),
+    ).rejects.toMatchObject({ code: "wallet_same_as_current" });
+  });
+
+  it("createWalletChangeRequest rejects wallets already linked to another account", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: "user_other",
+    } as never);
+
+    await expect(
+      createWalletChangeRequest({
+        userId: "user_1",
+        currentWalletAddress: "0x0000000000000000000000000000000000000001",
+        requestedWalletAddress: "0x0000000000000000000000000000000000000002",
+      }),
+    ).rejects.toMatchObject({ code: "wallet_already_linked" });
+    expect(prisma.walletLinkRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("confirmWalletChange requires a current wallet session", async () => {
+    await expect(
+      confirmWalletChange({
+        userId: "user_1",
+        currentWalletAddress: null,
+        requestId: "req_1",
+        message: "msg",
+        signature: "sig",
+      }),
+    ).rejects.toMatchObject({ code: "wallet_session_required" });
+    expect(verifySiweMessage).not.toHaveBeenCalled();
+  });
+
+  it("confirmWalletChange treats missing requestId/message/signature as wallet_change_not_found", async () => {
+    await expect(
+      confirmWalletChange({
+        userId: "user_1",
+        currentWalletAddress: "0x0000000000000000000000000000000000000001",
+        requestId: null,
+        message: "msg",
+        signature: "sig",
+      }),
+    ).rejects.toMatchObject({ code: "wallet_change_not_found" });
+    expect(prisma.walletLinkRequest.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("confirmWalletChange throws wallet_change_not_found when no matching request exists", async () => {
+    vi.mocked(prisma.walletLinkRequest.findFirst).mockResolvedValue(null);
+
+    await expect(
+      confirmWalletChange({
+        userId: "user_1",
+        currentWalletAddress: "0x0000000000000000000000000000000000000001",
+        requestId: "req_missing",
+        message: "msg",
+        signature: "sig",
+      }),
+    ).rejects.toMatchObject({ code: "wallet_change_not_found" });
+    expect(verifySiweMessage).not.toHaveBeenCalled();
+  });
+
+  it("confirmWalletChange rejects when SIWE-verified wallet matches current", async () => {
+    vi.mocked(prisma.walletLinkRequest.findFirst).mockResolvedValue({
+      id: "req_1",
+      challengeNonce: "nonce_1",
+      requestedWalletAddress: "0x0000000000000000000000000000000000000001",
+    } as never);
+    vi.mocked(verifySiweMessage).mockResolvedValue({
+      walletAddress: "0x0000000000000000000000000000000000000001",
+    });
+
+    await expect(
+      confirmWalletChange({
+        userId: "user_1",
+        currentWalletAddress: "0x0000000000000000000000000000000000000001",
+        requestId: "req_1",
+        message: "msg",
+        signature: "sig",
+      }),
+    ).rejects.toMatchObject({ code: "wallet_same_as_current" });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("confirmWalletChange rejects when verified wallet is already linked elsewhere", async () => {
+    vi.mocked(prisma.walletLinkRequest.findFirst).mockResolvedValue({
+      id: "req_1",
+      challengeNonce: "nonce_1",
+      requestedWalletAddress: "0x0000000000000000000000000000000000000002",
+    } as never);
+    vi.mocked(verifySiweMessage).mockResolvedValue({
+      walletAddress: "0x0000000000000000000000000000000000000002",
+    });
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: "user_other",
+    } as never);
+
+    await expect(
+      confirmWalletChange({
+        userId: "user_1",
+        currentWalletAddress: "0x0000000000000000000000000000000000000001",
+        requestId: "req_1",
+        message: "msg",
+        signature: "sig",
+      }),
+    ).rejects.toMatchObject({ code: "wallet_already_linked" });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
 });
