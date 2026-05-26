@@ -57,7 +57,6 @@ export async function POST(request: Request): Promise<NextResponse> {
       line_items: [{ price: getStripePlusPriceId(), quantity: 1 }],
       success_url: `${baseUrl}/account?billing=success`,
       cancel_url: `${baseUrl}/pricing?billing=cancelled`,
-      allow_promotion_codes: true,
       metadata: { userId: user.id },
       subscription_data: {
         metadata: { userId: user.id },

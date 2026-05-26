@@ -82,7 +82,6 @@ describe("POST /api/billing/checkout", () => {
       line_items: [{ price: "price_plus", quantity: 1 }],
       success_url: "https://choice.test/account?billing=success",
       cancel_url: "https://choice.test/pricing?billing=cancelled",
-      allow_promotion_codes: true,
       metadata: { userId: "user_1" },
       subscription_data: {
         metadata: { userId: "user_1" },
