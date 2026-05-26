@@ -15,7 +15,8 @@ vi.mock("@/lib/account", async () => {
 });
 
 import { POST } from "../route";
-import { confirmWalletChange } from "@/lib/account";
+import { AccountError, confirmWalletChange } from "@/lib/account";
+import { SiweAuthError } from "@/lib/auth/siwe";
 import { getRequestUser } from "@/lib/request-user";
 import { WALLET_SESSION_COOKIE_NAME } from "@/lib/auth/walletSession";
 
@@ -81,5 +82,84 @@ describe("POST /api/account/wallet/change/confirm", () => {
       walletAddress: "0x0000000000000000000000000000000000000002",
     });
     expect(res.headers.get("set-cookie")).toContain(WALLET_SESSION_COOKIE_NAME);
+  });
+
+  it("rejects malformed JSON bodies before invoking the account layer", async () => {
+    const res = await POST(
+      new Request("http://test/api/account/wallet/change/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{not-json",
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_json" });
+    expect(confirmWalletChange).not.toHaveBeenCalled();
+  });
+
+  it("maps SIWE failures to 400 with the SIWE error code", async () => {
+    vi.mocked(confirmWalletChange).mockRejectedValueOnce(
+      new SiweAuthError("siwe_rejected", "Wallet signature could not be verified."),
+    );
+
+    const res = await POST(
+      request({ requestId: "req_1", message: "msg", signature: "sig" }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "siwe_rejected" });
+  });
+
+  it("maps wallet_already_linked to 409", async () => {
+    vi.mocked(confirmWalletChange).mockRejectedValueOnce(
+      new AccountError("wallet_already_linked", "Wallet already linked."),
+    );
+
+    const res = await POST(
+      request({ requestId: "req_1", message: "msg", signature: "sig" }),
+    );
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "wallet_already_linked" });
+  });
+
+  it("maps wallet_change_not_found to 404", async () => {
+    vi.mocked(confirmWalletChange).mockRejectedValueOnce(
+      new AccountError("wallet_change_not_found", "No pending change."),
+    );
+
+    const res = await POST(
+      request({ requestId: "req_1", message: "msg", signature: "sig" }),
+    );
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "wallet_change_not_found" });
+  });
+
+  it("maps other account errors to 400", async () => {
+    vi.mocked(confirmWalletChange).mockRejectedValueOnce(
+      new AccountError("wallet_invalid", "Wallet address invalid."),
+    );
+
+    const res = await POST(
+      request({ requestId: "req_1", message: "msg", signature: "sig" }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "wallet_invalid" });
+  });
+
+  it("returns 500 internal_error for unexpected failures", async () => {
+    vi.mocked(confirmWalletChange).mockRejectedValueOnce(
+      new Error("database is on fire"),
+    );
+
+    const res = await POST(
+      request({ requestId: "req_1", message: "msg", signature: "sig" }),
+    );
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "internal_error" });
   });
 });
