@@ -4,8 +4,6 @@ import { prisma } from "@/lib/db";
 import { createNonce } from "./walletSession";
 
 export const SIWE_NONCE_TTL_MS = 10 * 60 * 1000;
-export const SIWE_STATEMENT =
-  "Sign in to ChoiceLens to manage your paid plan.";
 
 export class SiweAuthError extends Error {
   code:
@@ -44,25 +42,6 @@ export async function createSiweNonce(userId: string): Promise<string> {
     },
   });
   return nonce;
-}
-
-export function buildSiweMessage(args: {
-  address: string;
-  nonce: string;
-  chainId: number;
-}): string {
-  const baseUrl = appBaseUrl();
-  const message = new SiweMessage({
-    domain: baseUrl.host,
-    address: normalizeWalletAddress(args.address),
-    statement: SIWE_STATEMENT,
-    uri: baseUrl.origin,
-    version: "1",
-    chainId: args.chainId,
-    nonce: args.nonce,
-    issuedAt: new Date().toISOString(),
-  });
-  return message.prepareMessage();
 }
 
 export async function verifySiweMessage(args: {
