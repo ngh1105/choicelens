@@ -9,13 +9,23 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  handle    String   @unique
-  plan      String   @default("free")
-  createdAt DateTime @default(now())
+  id                       String    @id @default(cuid())
+  handle                   String    @unique
+  plan                     String    @default("free")
+  primaryWalletAddress     String?   @unique
+  walletLinkedAt           DateTime?
+  recoveryEmail            String?
+  recoveryEmailVerifiedAt  DateTime?
+  stripeCustomerId         String?   @unique
+  stripeSubscriptionId     String?   @unique
+  stripePriceId            String?
+  stripeSubscriptionStatus String?
+  stripeCurrentPeriodEnd   DateTime?
+  createdAt                DateTime  @default(now())
 
   comparisons Comparison[]
   watchlist   WatchlistEntry[]
+  walletLinkRequests WalletLinkRequest[]
 }
 
 model Comparison {
@@ -65,4 +75,28 @@ model Receipt {
   errorCode       String?    // GenLayerError code if status=failed
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
+}
+
+model WalletLinkRequest {
+  id                     String    @id @default(cuid())
+  userId                 String
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestedWalletAddress String
+  challengeNonce         String
+  status                 String
+  expiresAt              DateTime
+  createdAt              DateTime  @default(now())
+  confirmedAt            DateTime?
+
+  @@index([userId, status, expiresAt])
+  @@index([requestedWalletAddress])
+}
+
+model StripeWebhookEvent {
+  id           String    @id
+  type         String
+  status       String
+  receivedAt   DateTime  @default(now())
+  processedAt  DateTime?
+  errorMessage String?
 }
