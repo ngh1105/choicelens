@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getRequestUser, type RequestUser } from "@/lib/request-user";
 import { addWatchlistEntry, StoreError } from "@/lib/store";
 import {
   assertWithinPlanLimit,
@@ -6,11 +7,7 @@ import {
   PlanLimitError,
   planLimitPayload,
 } from "@/lib/usage";
-import {
-  getOrCreateVisitorUser,
-  visitorJson,
-  type VisitorUser,
-} from "@/lib/visitor";
+import { visitorJson } from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +20,9 @@ export async function POST(
   context: RouteContext,
 ): Promise<NextResponse> {
   const { id } = await context.params;
-  let visitor: VisitorUser;
+  let visitor: RequestUser;
   try {
-    visitor = await getOrCreateVisitorUser(request);
+    visitor = await getRequestUser(request);
   } catch (err) {
     console.error(`POST /api/comparisons/${id}/watchlist failed`, err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

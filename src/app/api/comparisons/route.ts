@@ -8,16 +8,13 @@ import {
   type PriorityWeights,
 } from "@/lib/comparison";
 import { listComparisons, saveComparison } from "@/lib/store";
+import { getRequestUser, type RequestUser } from "@/lib/request-user";
 import {
   assertWithinPlanLimit,
   PlanLimitError,
   planLimitPayload,
 } from "@/lib/usage";
-import {
-  getOrCreateVisitorUser,
-  visitorJson,
-  type VisitorUser,
-} from "@/lib/visitor";
+import { visitorJson } from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
@@ -78,9 +75,9 @@ function parseInput(payload: unknown): ComparisonInput | null {
 }
 
 export async function GET(request: Request): Promise<NextResponse> {
-  let visitor: VisitorUser;
+  let visitor: RequestUser;
   try {
-    visitor = await getOrCreateVisitorUser(request);
+    visitor = await getRequestUser(request);
   } catch (err) {
     console.error("GET /api/comparisons failed", err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
@@ -99,10 +96,10 @@ export async function GET(request: Request): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  let visitor: VisitorUser;
+  let visitor: RequestUser;
   let payload: unknown;
   try {
-    visitor = await getOrCreateVisitorUser(request);
+    visitor = await getRequestUser(request);
   } catch (err) {
     console.error("POST /api/comparisons failed", err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

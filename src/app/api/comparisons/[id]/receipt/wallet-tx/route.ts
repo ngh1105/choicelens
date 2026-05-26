@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getGenLayerService } from "@/lib/genlayer";
+import { getRequestUser, type RequestUser } from "@/lib/request-user";
 import {
   getComparison,
   getReceiptForComparison,
@@ -11,11 +12,7 @@ import {
   PlanLimitError,
   planLimitPayload,
 } from "@/lib/usage";
-import {
-  getOrCreateVisitorUser,
-  visitorJson,
-  type VisitorUser,
-} from "@/lib/visitor";
+import { visitorJson } from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
@@ -41,9 +38,9 @@ export async function POST(
   context: RouteContext,
 ): Promise<NextResponse> {
   const { id } = await context.params;
-  let visitor: VisitorUser;
+  let visitor: RequestUser;
   try {
-    visitor = await getOrCreateVisitorUser(request);
+    visitor = await getRequestUser(request);
   } catch (err) {
     console.error(
       `POST /api/comparisons/${id}/receipt/wallet-tx failed`,

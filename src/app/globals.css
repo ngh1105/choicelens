@@ -675,6 +675,18 @@ input[type="range"]::-moz-range-thumb {
   color: var(--warn);
 }
 
+.inline-upgrade-link {
+  display: inline-flex;
+  margin-left: 8px;
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.inline-upgrade-link:hover {
+  text-decoration: underline;
+}
+
 .receipt-card {
   display: flex;
   flex-direction: column;
@@ -888,6 +900,242 @@ input[type="range"]::-moz-range-thumb {
 .wallet-path-hint {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* ==== Billing beta ==== */
+
+.billing-shell {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 28px 20px;
+}
+
+.billing-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.billing-page-title {
+  margin: 10px 0 0;
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 650;
+}
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.pricing-plan {
+  min-width: 0;
+}
+
+.pricing-plan-featured {
+  border-color: var(--accent-soft);
+  box-shadow: var(--shadow-lift);
+}
+
+.pricing-plan .panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pricing-plan-body {
+  display: flex;
+  min-height: 360px;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pricing-plan-price {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.pricing-feature-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.pricing-feature-list li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.pricing-feature-list svg {
+  margin-top: 2px;
+  color: var(--positive);
+}
+
+.pricing-plan-action {
+  width: 100%;
+  min-height: 38px;
+  margin-top: auto;
+}
+
+.wallet-signin {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.wallet-signin-copy,
+.wallet-signin-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wallet-signin-actions {
+  flex-wrap: wrap;
+}
+
+.wallet-signin-icon,
+.account-summary-icon {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  color: var(--accent);
+}
+
+.wallet-signin-title,
+.wallet-signin-state,
+.account-summary-label,
+.account-summary-value {
+  margin: 0;
+}
+
+.wallet-signin-title,
+.account-summary-value {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wallet-signin-state,
+.account-summary-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.account-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.account-overview,
+.account-wallet-panel,
+.account-form,
+.account-action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.account-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.account-summary-value {
+  overflow-wrap: anywhere;
+}
+
+.account-input-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.account-input-row svg {
+  color: var(--text-muted);
+}
+
+.wallet-change-confirm {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.wallet-change-confirm input {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.inline-error,
+.inline-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.inline-error {
+  color: var(--danger);
+}
+
+.inline-success {
+  color: var(--positive);
+}
+
+@media (max-width: 900px) {
+  .pricing-grid,
+  .account-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .pricing-plan-body {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .billing-shell {
+    padding: 20px 12px;
+  }
+
+  .billing-page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .billing-page-title {
+    font-size: 24px;
+  }
 }
 
 /* ==== Admin / GenLayer ops ==== */

@@ -128,9 +128,13 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
+function isUpgradeMessage(message: string | null): boolean {
+  return message?.includes("Upgrade to Plus") ?? false;
+}
+
 export function planLimitMessage(err: ApiRequestError, fallback: string): string {
   if (err.code !== "plan_limit_reached") return err.message || fallback;
-  return `${err.message} Paid plan upgrades are coming soon.`;
+  return `${err.message} Upgrade to Plus to keep going.`;
 }
 
 export function localLimitMessage(
@@ -139,14 +143,14 @@ export function localLimitMessage(
 ): string {
   const metric = usage?.usage[feature];
   if (!metric || metric.limit === null) {
-    return "This Free plan limit has been reached. Paid plan upgrades are coming soon.";
+    return "This Free plan limit has been reached. Upgrade to Plus to keep going.";
   }
   const nouns: Record<UsageFeature, string> = {
     comparisons: "comparisons",
     watchlist: "watchlist items",
     receipts: "receipts",
   };
-  return `Free plan includes ${metric.limit} ${nouns[feature]}. Paid plan upgrades are coming soon.`;
+  return `Free plan includes ${metric.limit} ${nouns[feature]}. Upgrade to Plus to keep going.`;
 }
 
 export function isUsageBlocked(
@@ -555,7 +559,14 @@ export default function HomePage() {
           {actionError ? (
             <div className="panel">
               <div className="panel-body">
-                <div className="section-helper" role="alert">{actionError}</div>
+                <div className="section-helper" role="alert">
+                  {actionError}
+                  {isUpgradeMessage(actionError) ? (
+                    <a className="inline-upgrade-link" href="/pricing">
+                      View pricing
+                    </a>
+                  ) : null}
+                </div>
               </div>
             </div>
           ) : null}
@@ -1088,7 +1099,10 @@ function UsagePanel({
               usage.usage.watchlist.blocked ||
               usage.usage.receipts.blocked) ? (
               <p className="section-helper usage-upgrade-note">
-                Paid plan upgrades are coming soon.
+                Upgrade to Plus to keep going.
+                <a className="inline-upgrade-link" href="/pricing">
+                  View pricing
+                </a>
               </p>
             ) : null}
           </>
@@ -1236,7 +1250,10 @@ function ReceiptPanel({
         </div>
         {usageBlocked ? (
           <div className="section-helper">
-            Free receipt limit reached. Paid plan upgrades are coming soon.
+            Free receipt limit reached. Upgrade to Plus to keep going.
+            <a className="inline-upgrade-link" href="/pricing">
+              View pricing
+            </a>
           </div>
         ) : null}
         {showWalletControls ? (

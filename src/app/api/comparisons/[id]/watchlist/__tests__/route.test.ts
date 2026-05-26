@@ -77,7 +77,7 @@ describe("POST /api/comparisons/[id]/watchlist", () => {
       "cmp1",
     );
     expect(usage.assertWithinPlanLimit).toHaveBeenCalledWith(
-      visitor,
+      expect.objectContaining(visitor),
       "watchlist",
     );
     expect(store.addWatchlistEntry).toHaveBeenCalledWith("user_visitor", {
