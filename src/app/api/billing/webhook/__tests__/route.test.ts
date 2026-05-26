@@ -175,4 +175,135 @@ describe("POST /api/billing/webhook", () => {
     expect(prisma.stripeWebhookEvent.create).not.toHaveBeenCalled();
     errorSpy.mockRestore();
   });
+
+  it("rejects requests missing the stripe-signature header", async () => {
+    const res = await POST(
+      new Request("http://test/api/billing/webhook", {
+        method: "POST",
+        body: "{}",
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "missing_signature" });
+    expect(mocks.constructEvent).not.toHaveBeenCalled();
+    expect(prisma.stripeWebhookEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("treats stale processing reservations as retryable and resets receivedAt", async () => {
+    vi.mocked(prisma.stripeWebhookEvent.create).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique", {
+        code: "P2002",
+        clientVersion: "test",
+      }),
+    );
+    const stale = new Date(Date.now() - 6 * 60 * 1000);
+    vi.mocked(prisma.stripeWebhookEvent.findUnique).mockResolvedValue({
+      status: "processing",
+      receivedAt: stale,
+    } as never);
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    expect(mocks.syncUserSubscription).toHaveBeenCalled();
+    expect(prisma.stripeWebhookEvent.update).toHaveBeenCalledWith({
+      where: { id: "evt_123" },
+      data: {
+        type: "customer.subscription.updated",
+        status: "processing",
+        errorMessage: null,
+      },
+    });
+  });
+
+  it("treats fresh processing reservations as duplicates", async () => {
+    vi.mocked(prisma.stripeWebhookEvent.create).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique", {
+        code: "P2002",
+        clientVersion: "test",
+      }),
+    );
+    vi.mocked(prisma.stripeWebhookEvent.findUnique).mockResolvedValue({
+      status: "processing",
+      receivedAt: new Date(),
+    } as never);
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ received: true, duplicate: true });
+    expect(mocks.syncUserSubscription).not.toHaveBeenCalled();
+  });
+
+  it("treats missing reservation rows as duplicates", async () => {
+    vi.mocked(prisma.stripeWebhookEvent.create).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique", {
+        code: "P2002",
+        clientVersion: "test",
+      }),
+    );
+    vi.mocked(prisma.stripeWebhookEvent.findUnique).mockResolvedValue(null);
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ received: true, duplicate: true });
+    expect(mocks.syncUserSubscription).not.toHaveBeenCalled();
+  });
+
+  it("ignores unknown event types but still marks them processed", async () => {
+    mocks.constructEvent.mockReturnValue({
+      id: "evt_unknown",
+      type: "invoice.paid",
+      data: { object: {} },
+    });
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    expect(mocks.syncCheckoutSession).not.toHaveBeenCalled();
+    expect(mocks.syncUserSubscription).not.toHaveBeenCalled();
+    expect(mocks.clearUserSubscription).not.toHaveBeenCalled();
+    expect(prisma.stripeWebhookEvent.update).toHaveBeenCalledWith({
+      where: { id: "evt_unknown" },
+      data: {
+        status: "processed",
+        processedAt: expect.any(Date),
+        errorMessage: null,
+      },
+    });
+  });
+
+  it("marks failed and returns 500 when processing throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.syncUserSubscription.mockRejectedValueOnce(new Error("downstream"));
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "internal_error" });
+    expect(prisma.stripeWebhookEvent.update).toHaveBeenCalledWith({
+      where: { id: "evt_123" },
+      data: {
+        status: "failed",
+        errorMessage: "downstream",
+      },
+    });
+    errorSpy.mockRestore();
+  });
+
+  it("returns 500 when reserveWebhookEvent itself throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(prisma.stripeWebhookEvent.create).mockRejectedValueOnce(
+      new Error("db down"),
+    );
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "internal_error" });
+    expect(mocks.syncUserSubscription).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
 });
