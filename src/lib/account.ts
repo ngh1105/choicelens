@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
   normalizeWalletAddress,
@@ -251,7 +252,18 @@ export async function confirmWalletChange(args: {
       where: { id: request.id },
       data: { status: "confirmed", confirmedAt: new Date() },
     }),
-  ]);
+  ]).catch((err) => {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      throw new AccountError(
+        "wallet_already_linked",
+        "Wallet is already linked to another account.",
+      );
+    }
+    throw err;
+  });
 
   return { walletAddress };
 }

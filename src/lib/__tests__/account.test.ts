@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 
 vi.mock("../db", () => ({
   prisma: {
@@ -304,5 +305,35 @@ describe("account helpers", () => {
       }),
     ).rejects.toMatchObject({ code: "wallet_already_linked" });
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("confirmWalletChange maps a P2002 race in $transaction to wallet_already_linked", async () => {
+    vi.mocked(prisma.walletLinkRequest.findFirst).mockResolvedValue({
+      id: "req_1",
+      challengeNonce: "nonce_1",
+      requestedWalletAddress: "0x0000000000000000000000000000000000000002",
+    } as never);
+    vi.mocked(verifySiweMessage).mockResolvedValue({
+      walletAddress: "0x0000000000000000000000000000000000000002",
+    });
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.user.update).mockReturnValue({} as never);
+    vi.mocked(prisma.walletLinkRequest.update).mockReturnValue({} as never);
+    vi.mocked(prisma.$transaction).mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("Unique", {
+        code: "P2002",
+        clientVersion: "test",
+      }),
+    );
+
+    await expect(
+      confirmWalletChange({
+        userId: "user_1",
+        currentWalletAddress: "0x0000000000000000000000000000000000000001",
+        requestId: "req_1",
+        message: "msg",
+        signature: "sig",
+      }),
+    ).rejects.toMatchObject({ code: "wallet_already_linked" });
   });
 });
