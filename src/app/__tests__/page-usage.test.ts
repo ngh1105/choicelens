@@ -42,10 +42,10 @@ describe("page usage helpers", () => {
 
   it("formats local limit messages with upgrade availability copy", () => {
     expect(localLimitMessage("comparisons", baseUsage)).toBe(
-      "Free plan includes 20 comparisons. Paid plan upgrades are coming soon.",
+      "Free plan includes 20 comparisons. Upgrade to Plus to keep going.",
     );
     expect(localLimitMessage("receipts", baseUsage)).toBe(
-      "Free plan includes 5 receipts. Paid plan upgrades are coming soon.",
+      "Free plan includes 5 receipts. Upgrade to Plus to keep going.",
     );
   });
 
@@ -58,7 +58,7 @@ describe("page usage helpers", () => {
     });
 
     expect(planLimitMessage(err as never, "Unable to save top pick.")).toBe(
-      "Free plan includes 10 watchlist items. Paid plan upgrades are coming soon.",
+      "Free plan includes 10 watchlist items. Upgrade to Plus to keep going.",
     );
   });
 });
