@@ -22,18 +22,15 @@ export async function getRequestUser(request: Request): Promise<RequestUser> {
     return { ...visitor, authKind: "visitor", walletAddress: null };
   }
 
-  const user = await prisma.user.findFirst({
-    where: {
-      id: session.userId,
-      primaryWalletAddress: session.walletAddress,
-    },
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
     select: {
       id: true,
       plan: true,
       primaryWalletAddress: true,
     },
   });
-  if (!user) {
+  if (!user || user.primaryWalletAddress !== session.walletAddress) {
     return { ...visitor, authKind: "visitor", walletAddress: null };
   }
 
