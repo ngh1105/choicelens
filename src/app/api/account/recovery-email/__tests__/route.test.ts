@@ -16,7 +16,7 @@ vi.mock("@/lib/account", async () => {
 
 import { POST } from "../route";
 import { getRequestUser } from "@/lib/request-user";
-import { updateRecoveryEmail } from "@/lib/account";
+import { AccountError, updateRecoveryEmail } from "@/lib/account";
 
 const visitorUser = {
   id: "visitor_1",
@@ -68,5 +68,65 @@ describe("POST /api/account/recovery-email", () => {
       "name@example.com",
     );
     expect(await res.json()).toEqual({ recoveryEmail: "name@example.com" });
+  });
+
+  it("returns 500 internal_error when getRequestUser throws", async () => {
+    vi.mocked(getRequestUser).mockRejectedValueOnce(new Error("db down"));
+
+    const res = await POST(request({ recoveryEmail: "name@example.com" }));
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "internal_error" });
+    expect(updateRecoveryEmail).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed JSON bodies", async () => {
+    const res = await POST(
+      new Request("http://test/api/account/recovery-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{not-json",
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_json" });
+    expect(updateRecoveryEmail).not.toHaveBeenCalled();
+  });
+
+  it("maps recovery_email_invalid AccountError to 400 with the code", async () => {
+    vi.mocked(updateRecoveryEmail).mockRejectedValueOnce(
+      new AccountError("recovery_email_invalid", "Invalid email."),
+    );
+
+    const res = await POST(request({ recoveryEmail: "not-an-email" }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "recovery_email_invalid" });
+  });
+
+  it("returns 500 internal_error for unexpected updateRecoveryEmail failures", async () => {
+    vi.mocked(updateRecoveryEmail).mockRejectedValueOnce(new Error("boom"));
+
+    const res = await POST(request({ recoveryEmail: "name@example.com" }));
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "internal_error" });
+  });
+
+  it("forwards undefined for non-object payloads (clears recovery email)", async () => {
+    vi.mocked(updateRecoveryEmail).mockResolvedValueOnce(null);
+
+    const res = await POST(
+      new Request("http://test/api/account/recovery-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify("not-an-object"),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(updateRecoveryEmail).toHaveBeenCalledWith("user_1", undefined);
+    expect(await res.json()).toEqual({ recoveryEmail: null });
   });
 });
