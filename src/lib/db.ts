@@ -13,33 +13,3 @@ export const prisma: PrismaClient =
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
-
-export const ANON_USER_HANDLE = "anon";
-
-let ensureUserPromise: Promise<string> | null = null;
-
-export async function getDefaultUserId(): Promise<string> {
-  if (!ensureUserPromise) {
-    ensureUserPromise = prisma.user
-      .upsert({
-        where: { handle: ANON_USER_HANDLE },
-        update: {},
-        create: { handle: ANON_USER_HANDLE },
-        select: { id: true },
-      })
-      .then((u) => u.id)
-      .catch((err) => {
-        ensureUserPromise = null;
-        throw err;
-      });
-  }
-  return ensureUserPromise;
-}
-
-export async function getDefaultUser(): Promise<{ id: string; plan: string }> {
-  const id = await getDefaultUserId();
-  return prisma.user.findUniqueOrThrow({
-    where: { id },
-    select: { id: true, plan: true },
-  });
-}
