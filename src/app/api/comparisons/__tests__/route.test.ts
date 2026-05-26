@@ -105,7 +105,7 @@ describe("POST /api/comparisons", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ comparison: comparisonRecord });
     expect(usage.assertWithinPlanLimit).toHaveBeenCalledWith(
-      visitor,
+      expect.objectContaining(visitor),
       "comparisons",
     );
     expect(store.saveComparison).toHaveBeenCalledWith(

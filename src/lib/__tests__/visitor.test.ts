@@ -18,15 +18,25 @@ import {
 import { prisma } from "../db";
 
 const validVisitorId = "v_existingvisitor123";
+const userRecord = {
+  id: "user_visitor",
+  handle: "visitor:v_existingvisitor123",
+  plan: "free",
+  primaryWalletAddress: null,
+  walletLinkedAt: null,
+  recoveryEmail: null,
+  recoveryEmailVerifiedAt: null,
+  stripeCustomerId: null,
+  stripeSubscriptionId: null,
+  stripePriceId: null,
+  stripeSubscriptionStatus: null,
+  stripeCurrentPeriodEnd: null,
+  createdAt: new Date("2026-05-22T00:00:00.000Z"),
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(prisma.user.upsert).mockResolvedValue({
-    id: "user_visitor",
-    handle: "visitor:v_existingvisitor123",
-    plan: "free",
-    createdAt: new Date("2026-05-22T00:00:00.000Z"),
-  });
+  vi.mocked(prisma.user.upsert).mockResolvedValue(userRecord);
 });
 
 describe("visitor identity", () => {

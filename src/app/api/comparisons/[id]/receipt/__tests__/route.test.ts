@@ -144,7 +144,7 @@ describe("POST /api/comparisons/[id]/receipt", () => {
     expect(fakeSvc.createDecisionReceipt).not.toHaveBeenCalled();
     expect(store.getComparison).toHaveBeenCalledWith("user_visitor", "cmp1");
     expect(usage.assertWithinPlanLimit).toHaveBeenCalledWith(
-      visitor,
+      expect.objectContaining(visitor),
       "receipts",
     );
     expect((store.saveReceipt as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(

@@ -211,7 +211,7 @@ describe("POST /api/comparisons/[id]/receipt/wallet-tx", () => {
       "cmp1",
     );
     expect(usage.assertWithinPlanLimit).toHaveBeenCalledWith(
-      visitor,
+      expect.objectContaining(visitor),
       "receipts",
     );
     const saveArgs = (store.saveReceipt as ReturnType<typeof vi.fn>).mock.calls[0][1];

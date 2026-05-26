@@ -65,7 +65,9 @@ describe("GET /api/usage", () => {
     const res = await GET(new Request("http://test/api/usage"));
 
     expect(res.status).toBe(200);
-    expect(mockedSummary).toHaveBeenCalledWith(visitor);
+    expect(mockedSummary).toHaveBeenCalledWith(
+      expect.objectContaining(visitor),
+    );
     expect(await res.json()).toEqual({
       plan: "free",
       resetAt: "2026-06-01T00:00:00.000Z",

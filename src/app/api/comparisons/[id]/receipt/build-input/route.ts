@@ -2,12 +2,9 @@ import { NextResponse } from "next/server";
 import {
   buildCreateDecisionReceiptInput,
 } from "@/lib/genlayer";
+import { getRequestUser, type RequestUser } from "@/lib/request-user";
 import { getComparison, type ComparisonRecord } from "@/lib/store";
-import {
-  getOrCreateVisitorUser,
-  visitorJson,
-  type VisitorUser,
-} from "@/lib/visitor";
+import { visitorJson } from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +21,9 @@ export async function GET(
   context: RouteContext,
 ): Promise<NextResponse> {
   const { id } = await context.params;
-  let visitor: VisitorUser;
+  let visitor: RequestUser;
   try {
-    visitor = await getOrCreateVisitorUser(request);
+    visitor = await getRequestUser(request);
   } catch (err) {
     console.error(
       `GET /api/comparisons/${id}/receipt/build-input failed`,
