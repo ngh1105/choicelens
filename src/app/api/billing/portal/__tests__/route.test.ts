@@ -87,4 +87,23 @@ describe("POST /api/billing/portal", () => {
       return_url: "https://choice.test/account",
     });
   });
+
+  it("returns 500 internal_error when getRequestUser throws", async () => {
+    vi.mocked(getRequestUser).mockRejectedValueOnce(new Error("db down"));
+
+    const res = await POST(new Request("http://test/api/billing/portal"));
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "internal_error" });
+    expect(portalCreate).not.toHaveBeenCalled();
+  });
+
+  it("falls back to billing_portal_unavailable when Stripe fails", async () => {
+    portalCreate.mockRejectedValueOnce(new Error("stripe upstream timeout"));
+
+    const res = await POST(new Request("http://test/api/billing/portal"));
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "billing_portal_unavailable" });
+  });
 });

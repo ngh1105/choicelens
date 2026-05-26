@@ -113,4 +113,23 @@ describe("POST /api/billing/checkout", () => {
       expect.objectContaining({ customer: "cus_new" }),
     );
   });
+
+  it("returns 500 internal_error when getRequestUser throws", async () => {
+    vi.mocked(getRequestUser).mockRejectedValueOnce(new Error("db down"));
+
+    const res = await POST(new Request("http://test/api/billing/checkout"));
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "internal_error" });
+    expect(checkoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns checkout_unavailable when Stripe checkout creation fails", async () => {
+    checkoutCreate.mockRejectedValueOnce(new Error("stripe upstream"));
+
+    const res = await POST(new Request("http://test/api/billing/checkout"));
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "checkout_unavailable" });
+  });
 });
