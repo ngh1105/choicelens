@@ -44,6 +44,7 @@ function resolvePlan(subscription: Stripe.Subscription): "free" | "plus" {
 
 function subscriptionUserWhere(subscription: Stripe.Subscription) {
   const customerId = getCustomerId(subscription.customer);
+  // metadata.userId is set by us at checkout creation; trust requires a verified Stripe signature upstream.
   const userId = subscription.metadata?.userId;
   const clauses = [
     customerId ? { stripeCustomerId: customerId } : null,
