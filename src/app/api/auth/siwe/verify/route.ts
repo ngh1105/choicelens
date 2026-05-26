@@ -49,6 +49,20 @@ export async function POST(request: Request): Promise<NextResponse> {
       message: payload.message,
       signature: payload.signature,
     });
+    const currentUser = await prisma.user.findUnique({
+      where: { id: visitor.id },
+      select: { primaryWalletAddress: true },
+    });
+    if (
+      currentUser?.primaryWalletAddress &&
+      currentUser.primaryWalletAddress !== walletAddress
+    ) {
+      return visitorJson(
+        visitor,
+        { error: "wallet_change_required" },
+        { status: 409 },
+      );
+    }
     const linkedUser = await prisma.user.findUnique({
       where: { primaryWalletAddress: walletAddress },
       select: { id: true },
