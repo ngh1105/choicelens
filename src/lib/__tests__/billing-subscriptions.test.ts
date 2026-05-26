@@ -169,4 +169,110 @@ describe("billing subscription sync", () => {
       },
     });
   });
+
+  it("treats trialing subscriptions on the Plus price as plus", async () => {
+    await syncUserSubscription(subscription({ status: "trialing" }));
+
+    expect(prisma.user.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          plan: "plus",
+          stripeSubscriptionStatus: "trialing",
+        }),
+      }),
+    );
+  });
+
+  it("treats past_due subscriptions on the Plus price as free", async () => {
+    await syncUserSubscription(subscription({ status: "past_due" }));
+
+    expect(prisma.user.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          plan: "free",
+          stripeSubscriptionStatus: "past_due",
+        }),
+      }),
+    );
+  });
+
+  it("treats unpaid subscriptions on the Plus price as free", async () => {
+    await syncUserSubscription(subscription({ status: "unpaid" }));
+
+    expect(prisma.user.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ plan: "free" }),
+      }),
+    );
+  });
+
+  it("treats incomplete subscriptions on the Plus price as free", async () => {
+    await syncUserSubscription(subscription({ status: "incomplete" }));
+
+    expect(prisma.user.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ plan: "free" }),
+      }),
+    );
+  });
+
+  it("clearUserSubscription preserves recognized FREE statuses on the row", async () => {
+    await clearUserSubscription(subscription({ status: "incomplete_expired" }));
+
+    expect(prisma.user.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          plan: "free",
+          stripeSubscriptionStatus: "incomplete_expired",
+        }),
+      }),
+    );
+  });
+
+  it("clearUserSubscription falls back to canceled for non-FREE statuses", async () => {
+    await clearUserSubscription(subscription({ status: "active" }));
+
+    expect(prisma.user.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          plan: "free",
+          stripeSubscriptionStatus: "canceled",
+        }),
+      }),
+    );
+  });
+
+  it("syncCheckoutSession is a no-op when metadata.userId is missing", async () => {
+    await syncCheckoutSession({
+      customer: "cus_checkout",
+      subscription: "sub_checkout",
+    } as unknown as Stripe.Checkout.Session);
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it("syncCheckoutSession is a no-op when customer is missing", async () => {
+    await syncCheckoutSession({
+      metadata: { userId: "user_1" },
+      subscription: "sub_checkout",
+    } as unknown as Stripe.Checkout.Session);
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it("syncCheckoutSession unwraps a Stripe.Customer object", async () => {
+    await syncCheckoutSession({
+      metadata: { userId: "user_1" },
+      customer: { id: "cus_checkout" } as Stripe.Customer,
+      subscription: { id: "sub_checkout" } as Stripe.Subscription,
+    } as unknown as Stripe.Checkout.Session);
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "user_1" },
+      data: {
+        stripeCustomerId: "cus_checkout",
+        stripeSubscriptionId: "sub_checkout",
+      },
+    });
+  });
 });
