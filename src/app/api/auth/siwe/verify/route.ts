@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import {
   isSiweAuthError,
@@ -21,6 +22,12 @@ function isVerifyPayload(
     !Array.isArray(value) &&
     typeof (value as { message?: unknown }).message === "string" &&
     typeof (value as { signature?: unknown }).signature === "string"
+  );
+}
+
+function isUniqueConflict(err: unknown): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002"
   );
 }
 
@@ -75,21 +82,33 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const user = await prisma.user.update({
-      where: { id: visitor.id },
-      data: {
-        primaryWalletAddress: walletAddress,
-        walletLinkedAt: new Date(),
-      },
-      select: {
-        id: true,
-        plan: true,
-        primaryWalletAddress: true,
-        recoveryEmail: true,
-        stripeSubscriptionStatus: true,
-        stripeCurrentPeriodEnd: true,
-      },
-    });
+    let user;
+    try {
+      user = await prisma.user.update({
+        where: { id: visitor.id },
+        data: {
+          primaryWalletAddress: walletAddress,
+          walletLinkedAt: new Date(),
+        },
+        select: {
+          id: true,
+          plan: true,
+          primaryWalletAddress: true,
+          recoveryEmail: true,
+          stripeSubscriptionStatus: true,
+          stripeCurrentPeriodEnd: true,
+        },
+      });
+    } catch (err) {
+      if (isUniqueConflict(err)) {
+        return visitorJson(
+          visitor,
+          { error: "wallet_already_linked" },
+          { status: 409 },
+        );
+      }
+      throw err;
+    }
     const response = visitorJson(visitor, { account: user });
     return applyWalletSessionCookie(
       response,

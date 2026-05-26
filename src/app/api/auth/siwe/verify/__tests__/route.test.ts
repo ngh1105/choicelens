@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 
 vi.mock("@/lib/visitor", () => ({
   getOrCreateVisitorUser: vi.fn(),
@@ -143,5 +144,19 @@ describe("POST /api/auth/siwe/verify", () => {
 
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "siwe_rejected" });
+  });
+
+  it("returns 409 wallet_already_linked when the update races a unique-constraint conflict", async () => {
+    vi.mocked(prisma.user.update).mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("Unique", {
+        code: "P2002",
+        clientVersion: "test",
+      }),
+    );
+
+    const res = await POST(jsonRequest({ message: "msg", signature: "sig" }));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "wallet_already_linked" });
   });
 });
