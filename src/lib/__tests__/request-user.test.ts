@@ -7,7 +7,7 @@ vi.mock("../visitor", () => ({
 vi.mock("../db", () => ({
   prisma: {
     user: {
-      findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
   },
 }));
@@ -41,7 +41,7 @@ describe("getRequestUser", () => {
       authKind: "visitor",
       walletAddress: null,
     });
-    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
   });
 
   it("returns wallet user when signed session matches a linked wallet", async () => {
@@ -50,7 +50,7 @@ describe("getRequestUser", () => {
       walletAddress: "0x0000000000000000000000000000000000000001",
       now: new Date("2026-05-23T00:00:00.000Z"),
     });
-    vi.mocked(prisma.user.findFirst).mockResolvedValue({
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
       id: "wallet_user",
       plan: "plus",
       primaryWalletAddress: "0x0000000000000000000000000000000000000001",
@@ -77,7 +77,7 @@ describe("getRequestUser", () => {
       userId: "wallet_user",
       walletAddress: "0x0000000000000000000000000000000000000001",
     });
-    vi.mocked(prisma.user.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
 
     const user = await getRequestUser(
       new Request("http://test/", {
