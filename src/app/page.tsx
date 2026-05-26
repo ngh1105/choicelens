@@ -12,6 +12,7 @@ import {
   CircleDot,
 } from "lucide-react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import Link from "next/link";
 import {
   AGENT_LABELS,
   DEFAULT_PRIORITIES,
@@ -490,6 +491,12 @@ export default function HomePage() {
           </span>
         </div>
         <div className="app-header-actions">
+          <Link className="app-header-link" href="/pricing">
+            Pricing
+          </Link>
+          <Link className="app-header-link" href="/account">
+            Account
+          </Link>
           <span className="pill">
             <span
               className={`pill-dot ${isWalletConfigured ? "dot-ok" : ""}`}
