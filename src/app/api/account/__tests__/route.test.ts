@@ -15,7 +15,7 @@ vi.mock("@/lib/account", async () => {
 });
 
 import { GET } from "../route";
-import { getAccountSummary } from "@/lib/account";
+import { AccountError, getAccountSummary } from "@/lib/account";
 import { getRequestUser } from "@/lib/request-user";
 
 const visitorUser = {
@@ -68,5 +68,35 @@ describe("GET /api/account", () => {
       plan: "plus",
       primaryWalletAddress: walletUser.walletAddress,
     });
+  });
+
+  it("returns 500 internal_error when getRequestUser throws", async () => {
+    vi.mocked(getRequestUser).mockRejectedValueOnce(new Error("db down"));
+
+    const res = await GET(new Request("http://test/api/account"));
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "internal_error" });
+    expect(getAccountSummary).not.toHaveBeenCalled();
+  });
+
+  it("maps account_not_found to 404", async () => {
+    vi.mocked(getAccountSummary).mockRejectedValueOnce(
+      new AccountError("account_not_found", "User not found."),
+    );
+
+    const res = await GET(new Request("http://test/api/account"));
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
+
+  it("returns 500 internal_error for unexpected getAccountSummary failures", async () => {
+    vi.mocked(getAccountSummary).mockRejectedValueOnce(new Error("boom"));
+
+    const res = await GET(new Request("http://test/api/account"));
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "internal_error" });
   });
 });
