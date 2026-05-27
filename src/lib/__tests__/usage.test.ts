@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({
   prisma: {
@@ -33,6 +33,11 @@ beforeEach(() => {
   vi.mocked(prisma.comparison.count).mockResolvedValue(0);
   vi.mocked(prisma.watchlistEntry.count).mockResolvedValue(0);
   vi.mocked(prisma.receipt.count).mockResolvedValue(0);
+  vi.unstubAllEnvs();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("usage service", () => {
@@ -94,6 +99,25 @@ describe("usage service", () => {
       new Date("2026-05-22T00:00:00.000Z"),
     );
 
+    expect(summary.usage.comparisons).toEqual({
+      used: 200,
+      limit: null,
+      remaining: null,
+      percent: null,
+      blocked: false,
+    });
+  });
+
+  it("treats stored-free users as effective-Plus when BILLING_ENABLED=false", async () => {
+    vi.stubEnv("BILLING_ENABLED", "false");
+    vi.mocked(prisma.comparison.count).mockResolvedValue(200);
+
+    const summary = await getUsageSummary(
+      { id: "user_1", plan: "free" },
+      new Date("2026-05-22T00:00:00.000Z"),
+    );
+
+    expect(summary.plan).toBe("plus");
     expect(summary.usage.comparisons).toEqual({
       used: 200,
       limit: null,

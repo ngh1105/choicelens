@@ -132,4 +132,17 @@ describe("POST /api/billing/checkout", () => {
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "checkout_unavailable" });
   });
+
+  it("returns 503 billing_disabled when BILLING_ENABLED=false", async () => {
+    process.env.BILLING_ENABLED = "false";
+    try {
+      const res = await POST(new Request("http://test/api/billing/checkout"));
+
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: "billing_disabled" });
+      expect(checkoutCreate).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.BILLING_ENABLED;
+    }
+  });
 });

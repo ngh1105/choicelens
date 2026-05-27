@@ -10,6 +10,10 @@ import type {
   RawAccountSummary,
 } from "@/components/account/types";
 
+interface AccountSettingsProps {
+  billingEnabled?: boolean;
+}
+
 function formatDate(value: string | null): string {
   if (!value) return "No renewal date";
   return new Intl.DateTimeFormat("en", {
@@ -41,7 +45,7 @@ function normalizeAccount(value: RawAccountSummary): AccountSummary {
   };
 }
 
-export function AccountSettings() {
+export function AccountSettings({ billingEnabled = true }: AccountSettingsProps) {
   const [account, setAccount] = useState<AccountSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -153,12 +157,22 @@ export function AccountSettings() {
       <section className="panel">
         <div className="panel-header">
           <span className="panel-title">Billing</span>
-          <span className="panel-subtitle">Stripe portal</span>
+          <span className="panel-subtitle">
+            {billingEnabled ? "Stripe portal" : "Free during beta"}
+          </span>
         </div>
         <div className="panel-body">
-          <BillingPortalButton
-            disabled={!activeAccount.stripeSubscriptionStatus}
-          />
+          {billingEnabled ? (
+            <BillingPortalButton
+              disabled={!activeAccount.stripeSubscriptionStatus}
+            />
+          ) : (
+            <p className="section-helper">
+              Plus features are unlocked for everyone during the open beta. No
+              billing portal yet — you don&apos;t have a paid subscription to
+              manage.
+            </p>
+          )}
         </div>
       </section>
     </div>

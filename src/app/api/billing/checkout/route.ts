@@ -6,12 +6,16 @@ import {
   getStripe,
   getStripePlusPriceId,
 } from "@/lib/billing/stripe";
+import { isBillingEnabled } from "@/lib/billing/flag";
 import { ensureStripeCustomer } from "@/lib/billing/subscriptions";
 import { visitorJson } from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<NextResponse> {
+  if (!isBillingEnabled()) {
+    return NextResponse.json({ error: "billing_disabled" }, { status: 503 });
+  }
   let requestUser;
   try {
     requestUser = await getRequestUser(request);
