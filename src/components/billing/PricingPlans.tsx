@@ -10,6 +10,10 @@ interface CheckoutResponse {
   error?: string;
 }
 
+interface PricingPlansProps {
+  billingEnabled?: boolean;
+}
+
 const freeFeatures = [
   "Core comparison workflow",
   "Watchlist and receipt previews",
@@ -28,7 +32,7 @@ const proFeatures = [
   "Team and catalog workflows planned",
 ];
 
-export function PricingPlans() {
+export function PricingPlans({ billingEnabled = true }: PricingPlansProps) {
   const [sessionReady, setSessionReady] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -77,25 +81,47 @@ export function PricingPlans() {
             <Sparkles size={14} />
             Plus
           </span>
-          <span className="receipt-pill receipt-pill-info">Beta</span>
+          <span className="receipt-pill receipt-pill-info">
+            {billingEnabled ? "Beta" : "Free during beta"}
+          </span>
         </div>
         <div className="panel-body pricing-plan-body">
           <div>
-            <p className="pricing-plan-price">$12/mo</p>
-            <p className="section-helper">Billed monthly</p>
+            <p className="pricing-plan-price">
+              {billingEnabled ? "$12/mo" : "Free"}
+            </p>
+            <p className="section-helper">
+              {billingEnabled
+                ? "Billed monthly"
+                : "Plus features unlocked for everyone during the open beta."}
+            </p>
           </div>
           <FeatureList features={plusFeatures} />
-          <WalletSignInPrompt onSessionReady={() => setSessionReady(true)} />
-          <button
-            className="btn btn-primary pricing-plan-action"
-            type="button"
-            onClick={startCheckout}
-            disabled={!sessionReady || checkoutBusy}
-          >
-            {checkoutBusy ? "Opening..." : "Upgrade to Plus"}
-            <ArrowRight size={14} />
-          </button>
-          {checkoutError ? <p className="inline-error">{checkoutError}</p> : null}
+          {billingEnabled ? (
+            <>
+              <WalletSignInPrompt onSessionReady={() => setSessionReady(true)} />
+              <button
+                className="btn btn-primary pricing-plan-action"
+                type="button"
+                onClick={startCheckout}
+                disabled={!sessionReady || checkoutBusy}
+              >
+                {checkoutBusy ? "Opening..." : "Upgrade to Plus"}
+                <ArrowRight size={14} />
+              </button>
+              {checkoutError ? (
+                <p className="inline-error">{checkoutError}</p>
+              ) : null}
+            </>
+          ) : (
+            <Link
+              className="btn btn-primary pricing-plan-action"
+              href="/"
+            >
+              Open app
+              <ArrowRight size={14} />
+            </Link>
+          )}
         </div>
       </section>
 

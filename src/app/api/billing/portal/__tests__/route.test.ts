@@ -106,4 +106,17 @@ describe("POST /api/billing/portal", () => {
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "billing_portal_unavailable" });
   });
+
+  it("returns 503 billing_disabled when BILLING_ENABLED=false", async () => {
+    process.env.BILLING_ENABLED = "false";
+    try {
+      const res = await POST(new Request("http://test/api/billing/portal"));
+
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: "billing_disabled" });
+      expect(portalCreate).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.BILLING_ENABLED;
+    }
+  });
 });

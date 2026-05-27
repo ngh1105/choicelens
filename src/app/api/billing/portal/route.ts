@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getRequestUser } from "@/lib/request-user";
 import { getAppBaseUrl, getStripe } from "@/lib/billing/stripe";
+import { isBillingEnabled } from "@/lib/billing/flag";
 import { visitorJson } from "@/lib/visitor";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<NextResponse> {
+  if (!isBillingEnabled()) {
+    return NextResponse.json({ error: "billing_disabled" }, { status: 503 });
+  }
   let requestUser;
   try {
     requestUser = await getRequestUser(request);
