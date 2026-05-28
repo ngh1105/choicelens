@@ -114,13 +114,12 @@ export function PricingPlans({ billingEnabled = true }: PricingPlansProps) {
               ) : null}
             </>
           ) : (
-            <Link
-              className="btn btn-primary pricing-plan-action"
-              href="/"
-            >
-              Open app
-              <ArrowRight size={14} />
-            </Link>
+            <>
+              <p className="section-helper pricing-plan-beta-helper">
+                Connect a wallet during the open beta to unlock Plus for free.
+              </p>
+              <WalletSignInPrompt />
+            </>
           )}
         </div>
       </section>
