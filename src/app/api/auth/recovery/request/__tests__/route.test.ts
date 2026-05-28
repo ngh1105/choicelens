@@ -11,7 +11,7 @@ vi.mock("@/lib/auth/recovery", async () => {
 });
 
 import { POST } from "../route";
-import { requestRecoveryOtp, RecoveryError } from "@/lib/auth/recovery";
+import { requestRecoveryOtp } from "@/lib/auth/recovery";
 
 function jsonRequest(body: unknown): Request {
   return new Request("http://test/api/auth/recovery/request", {
@@ -51,19 +51,9 @@ describe("POST /api/auth/recovery/request", () => {
     expect(requestRecoveryOtp).not.toHaveBeenCalled();
   });
 
-  it("returns 502 on email_send_failed", async () => {
-    vi.mocked(requestRecoveryOtp).mockRejectedValue(
-      new RecoveryError("recovery_email_send_failed", "boom"),
-    );
-    const res = await POST(jsonRequest({ email: "alice@example.com" }));
-    expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ error: "recovery_email_send_failed" });
-  });
-
-  it("returns 500 on unexpected errors", async () => {
+  it("returns 204 when the recovery layer throws (no enumeration leak)", async () => {
     vi.mocked(requestRecoveryOtp).mockRejectedValue(new Error("db dead"));
     const res = await POST(jsonRequest({ email: "alice@example.com" }));
-    expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: "internal_error" });
+    expect(res.status).toBe(204);
   });
 });

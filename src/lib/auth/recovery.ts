@@ -29,13 +29,14 @@ import { sendRecoveryOtpEmail } from "@/lib/email/templates";
 
 export const RECOVERY_LOCKOUT_MS = 24 * 60 * 60 * 1000;
 export const RECOVERY_NONCE_TTL_MS = 10 * 60 * 1000;
+export const RECOVERY_MAX_NONCES_PER_TOKEN = 10;
 
 export class RecoveryError extends Error {
   code:
     | "recovery_email_invalid"
     | "recovery_token_invalid"
     | "recovery_locked"
-    | "recovery_email_send_failed"
+    | "recovery_challenge_rate_limited"
     | "wallet_same_as_current"
     | "wallet_already_linked"
     | "wallet_invalid";
@@ -62,19 +63,19 @@ export interface RequestRecoveryOtpResult {
 /**
  * Requests a wallet-recovery OTP for the given email.
  *
- * The HTTP layer should always respond with a generic success regardless of
- * outcome to avoid leaking whether an email is registered. The `delivered`
- * flag here is for logging/metrics only.
+ * Always silent from the caller's perspective: the HTTP layer should always
+ * respond with a generic 204 regardless of outcome to avoid leaking whether
+ * an email is registered. The `delivered` flag is for logging/metrics only.
  *
  * Cases that silently noop:
  *  - Invalid email format.
  *  - No user has this address as a verified recovery email.
  *  - User is currently inside their post-recovery cooldown window.
  *  - Rate limit hit for this (email, purpose) pair.
+ *  - Email provider rejected the message.
  *
- * Throws RecoveryError("recovery_email_send_failed") only when the email
- * provider is configured and rejected the message; the caller may choose to
- * surface that to the user or, more conservatively, swallow it.
+ * Email-provider failures are logged but not thrown; otherwise an attacker
+ * can probe registered addresses by watching for non-204 responses.
  */
 export async function requestRecoveryOtp(
   args: RequestRecoveryOtpArgs,
@@ -87,17 +88,18 @@ export async function requestRecoveryOtp(
   }
   if (!email) return { delivered: false };
 
-  const user = await prisma.user.findFirst({
-    where: {
-      recoveryEmail: email,
-      recoveryEmailVerifiedAt: { not: null },
-    },
+  // findUnique is safe now that recoveryEmail is @unique. It also closes a
+  // prior ambiguity where two accounts could share the same recovery email
+  // and findFirst would non-deterministically pick one.
+  const user = await prisma.user.findUnique({
+    where: { recoveryEmail: email },
     select: {
       id: true,
+      recoveryEmailVerifiedAt: true,
       recoveryLockedUntil: true,
     },
   });
-  if (!user) return { delivered: false };
+  if (!user || !user.recoveryEmailVerifiedAt) return { delivered: false };
   if (user.recoveryLockedUntil && user.recoveryLockedUntil > new Date()) {
     return { delivered: false };
   }
@@ -134,15 +136,20 @@ export async function requestRecoveryOtp(
       expiresAt: issued.expiresAt,
     });
   } catch (err) {
+    // Swallow send failures: surfacing 502 only on registered emails would
+    // leak existence (unregistered always 204). Operator surfaces this via
+    // logs/metrics; user sees the same 204 either way and can retry.
     if (isEmailSendError(err)) {
       const sendErr = err as EmailSendError;
-      console.error("recovery email failed", sendErr.code, sendErr.message);
-      throw new RecoveryError(
-        "recovery_email_send_failed",
-        "Failed to send recovery email.",
+      console.error(
+        "recovery email failed",
+        sendErr.code,
+        sendErr.message,
       );
+    } else {
+      console.error("recovery email failed (unexpected)", err);
     }
-    throw err;
+    return { delivered: false };
   }
   return { delivered: true };
 }
@@ -232,6 +239,25 @@ export async function beginRecoveryWalletChallenge(
   args: BeginRecoveryWalletChallengeArgs,
 ): Promise<RecoveryWalletChallenge> {
   const token = parseTokenOrThrow(args.recoveryToken);
+
+  // Per-token cap on issued nonces. The token TTL already bounds blast
+  // radius (10 min, one user), but limiting the row count prevents a holder
+  // from inflating WalletLinkRequest with junk.
+  const issuedAt = new Date(token.issuedAt * 1000);
+  const issued = await prisma.walletLinkRequest.count({
+    where: {
+      userId: token.userId,
+      status: "recovery_nonce",
+      createdAt: { gte: issuedAt },
+    },
+  });
+  if (issued >= RECOVERY_MAX_NONCES_PER_TOKEN) {
+    throw new RecoveryError(
+      "recovery_challenge_rate_limited",
+      "Too many recovery challenges for this token.",
+    );
+  }
+
   const nonce = createNonce();
   const expiresAt = new Date(Date.now() + RECOVERY_NONCE_TTL_MS);
   await prisma.walletLinkRequest.create({
@@ -347,7 +373,11 @@ export async function confirmRecovery(
 
   const recoveryLockedUntil = new Date(Date.now() + RECOVERY_LOCKOUT_MS);
   try {
-    await prisma.$transaction([
+    // Tighten the nonce update to require status=recovery_nonce so a
+    // concurrent confirm cannot consume the same row twice. updateMany
+    // returns count=0 if the row was already used; treat that as the same
+    // "no live nonce" failure.
+    const [, nonceUpdate] = await prisma.$transaction([
       prisma.user.update({
         where: { id: user.id },
         data: {
@@ -356,8 +386,8 @@ export async function confirmRecovery(
           recoveryLockedUntil,
         },
       }),
-      prisma.walletLinkRequest.update({
-        where: { id: nonceRecord.id },
+      prisma.walletLinkRequest.updateMany({
+        where: { id: nonceRecord.id, status: "recovery_nonce" },
         data: { status: "recovery_used", confirmedAt: new Date() },
       }),
       prisma.emailOtp.update({
@@ -365,6 +395,12 @@ export async function confirmRecovery(
         data: { recoveryConfirmedAt: new Date() },
       }),
     ]);
+    if (nonceUpdate.count !== 1) {
+      throw new RecoveryError(
+        "recovery_token_invalid",
+        "Recovery wallet challenge was already used.",
+      );
+    }
   } catch (err) {
     if (
       err instanceof Prisma.PrismaClientKnownRequestError &&

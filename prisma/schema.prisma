@@ -14,7 +14,7 @@ model User {
   plan                     String    @default("free")
   primaryWalletAddress     String?   @unique
   walletLinkedAt           DateTime?
-  recoveryEmail            String?
+  recoveryEmail            String?   @unique
   recoveryEmailVerifiedAt  DateTime?
   recoveryLockedUntil      DateTime?
   stripeCustomerId         String?   @unique

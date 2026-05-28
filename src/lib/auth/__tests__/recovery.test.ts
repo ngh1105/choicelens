@@ -8,9 +8,11 @@ vi.mock("@/lib/db", () => ({
       update: vi.fn(),
     },
     walletLinkRequest: {
+      count: vi.fn(),
       create: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     emailOtp: { update: vi.fn() },
     $transaction: vi.fn(),
@@ -100,19 +102,20 @@ describe("requestRecoveryOtp", () => {
   it("noops silently when email is invalid", async () => {
     const res = await requestRecoveryOtp({ email: "not-an-email" });
     expect(res.delivered).toBe(false);
-    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
   });
 
   it("noops silently when no verified user matches", async () => {
-    vi.mocked(prisma.user.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
     const res = await requestRecoveryOtp({ email });
     expect(res.delivered).toBe(false);
     expect(issueOtp).not.toHaveBeenCalled();
   });
 
   it("noops silently when user is locked", async () => {
-    vi.mocked(prisma.user.findFirst).mockResolvedValue({
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
       id: "user_1",
+      recoveryEmailVerifiedAt: new Date(),
       recoveryLockedUntil: new Date(Date.now() + 1_000_000),
     } as never);
     const res = await requestRecoveryOtp({ email });
@@ -121,8 +124,9 @@ describe("requestRecoveryOtp", () => {
   });
 
   it("noops when rate limited", async () => {
-    vi.mocked(prisma.user.findFirst).mockResolvedValue({
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
       id: "user_1",
+      recoveryEmailVerifiedAt: new Date(),
       recoveryLockedUntil: null,
     } as never);
     vi.mocked(issueOtp).mockRejectedValue(
@@ -133,8 +137,9 @@ describe("requestRecoveryOtp", () => {
   });
 
   it("issues an OTP and skips delivery when email provider is disabled", async () => {
-    vi.mocked(prisma.user.findFirst).mockResolvedValue({
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
       id: "user_1",
+      recoveryEmailVerifiedAt: new Date(),
       recoveryLockedUntil: null,
     } as never);
     vi.mocked(issueOtp).mockResolvedValue({
@@ -149,8 +154,9 @@ describe("requestRecoveryOtp", () => {
   });
 
   it("sends an email when provider is enabled and reports delivered=true", async () => {
-    vi.mocked(prisma.user.findFirst).mockResolvedValue({
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
       id: "user_1",
+      recoveryEmailVerifiedAt: new Date(),
       recoveryLockedUntil: null,
     } as never);
     vi.mocked(issueOtp).mockResolvedValue({
@@ -167,6 +173,30 @@ describe("requestRecoveryOtp", () => {
     expect(sendRecoveryOtpEmail).toHaveBeenCalledWith(
       expect.objectContaining({ to: email, code: "123456" }),
     );
+  });
+
+  it("swallows email send failures to avoid enumeration", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: "user_1",
+      recoveryEmailVerifiedAt: new Date(),
+      recoveryLockedUntil: null,
+    } as never);
+    vi.mocked(issueOtp).mockResolvedValue({
+      id: "otp_1",
+      code: "123456",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    vi.mocked(isEmailEnabled).mockReturnValue(true);
+    vi.mocked(sendRecoveryOtpEmail).mockRejectedValue(
+      Object.assign(new Error("resend down"), {
+        name: "EmailSendError",
+        code: "email_send_failed",
+      }),
+    );
+
+    const res = await requestRecoveryOtp({ email });
+
+    expect(res.delivered).toBe(false);
   });
 });
 
@@ -217,6 +247,7 @@ describe("beginRecoveryWalletChallenge", () => {
       email,
       otpId: "otp_1",
     });
+    vi.mocked(prisma.walletLinkRequest.count).mockResolvedValue(0);
     vi.mocked(prisma.walletLinkRequest.create).mockResolvedValue({} as never);
 
     const res = await beginRecoveryWalletChallenge({ recoveryToken: token });
@@ -231,6 +262,20 @@ describe("beginRecoveryWalletChallenge", () => {
         }),
       }),
     );
+  });
+
+  it("rate limits recovery nonce creation per token", async () => {
+    const token = createRecoveryToken({
+      userId: "user_1",
+      email,
+      otpId: "otp_1",
+    });
+    vi.mocked(prisma.walletLinkRequest.count).mockResolvedValue(10);
+
+    await expect(
+      beginRecoveryWalletChallenge({ recoveryToken: token }),
+    ).rejects.toMatchObject({ code: "recovery_challenge_rate_limited" });
+    expect(prisma.walletLinkRequest.create).not.toHaveBeenCalled();
   });
 
   it("throws when token is invalid", async () => {
@@ -260,7 +305,11 @@ describe("confirmRecovery", () => {
         recoveryLockedUntil: null,
       } as never)
       .mockResolvedValueOnce(null);
-    vi.mocked(prisma.$transaction).mockResolvedValue([] as never);
+    vi.mocked(prisma.$transaction).mockResolvedValue([
+      {},
+      { count: 1 },
+      {},
+    ] as never);
 
     const res = await confirmRecovery({
       recoveryToken: tokenFor(),
@@ -358,4 +407,37 @@ describe("confirmRecovery", () => {
       }),
     ).rejects.toMatchObject({ code: "recovery_locked" });
   });
+
+  it("rejects when nonce was already consumed concurrently", async () => {
+    vi.mocked(prisma.walletLinkRequest.findFirst).mockResolvedValue({
+      id: "wlr_1",
+      challengeNonce: "nonce_abc",
+    } as never);
+    vi.mocked(verifySiweMessage).mockResolvedValue({
+      walletAddress: "0xnew",
+    });
+    vi.mocked(prisma.user.findUnique)
+      .mockResolvedValueOnce({
+        id: "user_1",
+        primaryWalletAddress: "0xold",
+        recoveryLockedUntil: null,
+      } as never)
+      .mockResolvedValueOnce(null);
+    vi.mocked(prisma.$transaction).mockResolvedValue([
+      {},
+      { count: 0 },
+      {},
+    ] as never);
+
+    await expect(
+      confirmRecovery({
+        recoveryToken: tokenFor(),
+        message: "m",
+        signature: "s",
+      }),
+    ).rejects.toMatchObject({ code: "recovery_token_invalid" });
+  });
 });
+
+
+
