@@ -6,6 +6,7 @@ const tx = {
   },
   comparisonFeedback: {
     create: vi.fn(),
+    upsert: vi.fn(),
   },
   watchlistEntry: {
     findUnique: vi.fn(),
@@ -92,7 +93,7 @@ describe("store visitor ownership", () => {
 
   it("stores comparison feedback for an owned comparison", async () => {
     tx.comparison.findFirst.mockResolvedValue({ id: "cmp1" });
-    tx.comparisonFeedback.create.mockResolvedValue({
+    tx.comparisonFeedback.upsert.mockResolvedValue({
       id: "fb1",
       comparisonId: "cmp1",
       helpful: false,
@@ -107,10 +108,19 @@ describe("store visitor ownership", () => {
       helpful: false,
       createdAt: "2026-05-28T00:00:00.000Z",
     });
-    expect(tx.comparisonFeedback.create).toHaveBeenCalledWith({
-      data: {
+    expect(tx.comparisonFeedback.upsert).toHaveBeenCalledWith({
+      where: {
+        comparisonId_userId: {
+          comparisonId: "cmp1",
+          userId: "user_a",
+        },
+      },
+      create: {
         comparisonId: "cmp1",
         userId: "user_a",
+        helpful: false,
+      },
+      update: {
         helpful: false,
       },
     });
@@ -123,6 +133,6 @@ describe("store visitor ownership", () => {
       name: "StoreError",
       code: "comparison_not_found",
     });
-    expect(tx.comparisonFeedback.create).not.toHaveBeenCalled();
+    expect(tx.comparisonFeedback.upsert).not.toHaveBeenCalled();
   });
 });

@@ -72,7 +72,9 @@ model ComparisonFeedback {
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   helpful      Boolean
   createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
+  @@unique([comparisonId, userId])
   @@index([comparisonId, createdAt])
   @@index([userId, createdAt])
 }

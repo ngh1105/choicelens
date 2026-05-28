@@ -279,10 +279,19 @@ export async function saveComparisonFeedback(
     if (!comparison) {
       throw new StoreError("comparison_not_found", "Comparison not found");
     }
-    return tx.comparisonFeedback.create({
-      data: {
+    return tx.comparisonFeedback.upsert({
+      where: {
+        comparisonId_userId: {
+          comparisonId: comparison.id,
+          userId,
+        },
+      },
+      create: {
         comparisonId: comparison.id,
         userId,
+        helpful: args.helpful,
+      },
+      update: {
         helpful: args.helpful,
       },
     });
