@@ -53,12 +53,28 @@ export type RateLimitBackend = (
 };
 
 let backend: RateLimitBackend = checkInMemoryRateLimit;
+let bootstrapAttempted = false;
+
+async function maybeBootstrap(): Promise<void> {
+  if (bootstrapAttempted) return;
+  bootstrapAttempted = true;
+  // Defer the import so test code that overrides the backend before the first
+  // call is not racing with this side-effect import.
+  try {
+    const mod = await import("@/lib/rateLimit.bootstrap");
+    mod.ensureSharedRateLimitBackend();
+  } catch {
+    // best effort; bootstrap is optional
+  }
+}
 
 export function setRateLimitBackend(next: RateLimitBackend): void {
+  bootstrapAttempted = true;
   backend = next;
 }
 
 export function resetRateLimitBackend(): void {
+  bootstrapAttempted = false;
   backend = checkInMemoryRateLimit;
 }
 
@@ -66,6 +82,7 @@ export async function applyApiRateLimit(
   request: Request,
   options: ApiRateLimitOptions,
 ): Promise<ApiRateLimitResult> {
+  await maybeBootstrap();
   const result = await backend({
     key: buildKey(request, options),
     limit: options.limit,
