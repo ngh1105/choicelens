@@ -16,6 +16,7 @@ model User {
   walletLinkedAt           DateTime?
   recoveryEmail            String?
   recoveryEmailVerifiedAt  DateTime?
+  recoveryLockedUntil      DateTime?
   stripeCustomerId         String?   @unique
   stripeSubscriptionId     String?   @unique
   stripePriceId            String?
@@ -26,6 +27,7 @@ model User {
   comparisons Comparison[]
   watchlist   WatchlistEntry[]
   walletLinkRequests WalletLinkRequest[]
+  emailOtps          EmailOtp[]
 }
 
 model Comparison {
@@ -90,6 +92,23 @@ model WalletLinkRequest {
 
   @@index([userId, status, expiresAt])
   @@index([requestedWalletAddress])
+}
+
+model EmailOtp {
+  id                  String    @id @default(cuid())
+  email               String
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose             String
+  codeHash            String
+  attempts            Int       @default(0)
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  recoveryConfirmedAt DateTime?
+  createdAt           DateTime  @default(now())
+
+  @@index([email, purpose, createdAt])
+  @@index([userId, purpose, createdAt])
 }
 
 model StripeWebhookEvent {
