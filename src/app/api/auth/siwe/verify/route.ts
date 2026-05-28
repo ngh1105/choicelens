@@ -8,6 +8,7 @@ import {
   applyWalletSessionCookie,
   createWalletSessionToken,
 } from "@/lib/auth/walletSession";
+import { isBillingEnabled } from "@/lib/billing/flag";
 import { prisma } from "@/lib/db";
 import { getOrCreateVisitorUser, visitorJson } from "@/lib/visitor";
 
@@ -89,6 +90,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         data: {
           primaryWalletAddress: walletAddress,
           walletLinkedAt: new Date(),
+          ...(!isBillingEnabled() ? { plan: "plus" } : {}),
         },
         select: {
           id: true,
