@@ -57,8 +57,8 @@ describe("issueOtp", () => {
     } as never);
     vi.mocked(prisma.emailOtp.updateMany).mockReturnValue({ count: 1 } as never);
     vi.mocked(prisma.$transaction).mockResolvedValue([
-      { id: "otp_1", expiresAt },
       { count: 1 },
+      { id: "otp_1", expiresAt },
     ] as never);
 
     const issued = await issueOtp({
@@ -90,6 +90,9 @@ describe("issueOtp", () => {
         }),
         data: { consumedAt: expect.any(Date) },
       }),
+    );
+    expect(vi.mocked(prisma.emailOtp.updateMany).mock.calls[0][0].where).not.toHaveProperty(
+      "codeHash",
     );
   });
 

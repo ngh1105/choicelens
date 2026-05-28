@@ -78,7 +78,17 @@ export async function issueOtp(args: IssueOtpArgs): Promise<IssuedOtp> {
   const code = generateOtpCode();
   const expiresAt = new Date(Date.now() + OTP_TTL_MS);
   const now = new Date();
-  const [record] = await prisma.$transaction([
+  const [_, record] = await prisma.$transaction([
+    prisma.emailOtp.updateMany({
+      where: {
+        email: args.email,
+        userId: args.userId,
+        purpose: args.purpose,
+        consumedAt: null,
+        expiresAt: { gt: now },
+      },
+      data: { consumedAt: now },
+    }),
     prisma.emailOtp.create({
       data: {
         email: args.email,
@@ -88,17 +98,6 @@ export async function issueOtp(args: IssueOtpArgs): Promise<IssuedOtp> {
         expiresAt,
       },
       select: { id: true, expiresAt: true },
-    }),
-    prisma.emailOtp.updateMany({
-      where: {
-        email: args.email,
-        userId: args.userId,
-        purpose: args.purpose,
-        consumedAt: null,
-        expiresAt: { gt: now },
-        codeHash: { not: hashOtpCode(code) },
-      },
-      data: { consumedAt: now },
     }),
   ]);
   return { id: record.id, code, expiresAt: record.expiresAt };

@@ -106,6 +106,23 @@ export function parseRecoveryEmail(value: unknown): string | null {
   return trimmed;
 }
 
+function isRecoveryEmailUniqueViolation(
+  err: Prisma.PrismaClientKnownRequestError,
+): boolean {
+  if (err.code !== "P2002") return false;
+  const target = err.meta?.target;
+  if (Array.isArray(target)) {
+    return target.includes("recoveryEmail");
+  }
+  if (typeof target === "string") {
+    return (
+      target.includes("recoveryEmail") ||
+      target.includes("User_recoveryEmail_key")
+    );
+  }
+  return false;
+}
+
 export async function updateRecoveryEmail(
   userId: string,
   value: unknown,
@@ -139,9 +156,7 @@ export async function updateRecoveryEmail(
   } catch (err) {
     if (
       err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002" &&
-      Array.isArray(err.meta?.target) &&
-      err.meta.target.includes("recoveryEmail")
+      isRecoveryEmailUniqueViolation(err)
     ) {
       throw new AccountError(
         "recovery_email_already_used",
@@ -309,4 +324,3 @@ export async function confirmWalletChange(args: {
 export function isAccountError(value: unknown): value is AccountError {
   return value instanceof AccountError;
 }
-
