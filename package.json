@@ -18,6 +18,7 @@
     "test:watch": "vitest",
     "genlayer:deploy": "tsx scripts/deploy-registry.ts",
     "genlayer:smoke": "tsx scripts/check-studionet.ts",
+    "stripe:smoke:readiness": "tsx scripts/check-stripe-smoke-readiness.ts",
     "genlayer:smoke:ephemeral": "tsx scripts/deploy-and-smoke-ephemeral.ts"
   },
   "prisma": {

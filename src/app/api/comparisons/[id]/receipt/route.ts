@@ -82,8 +82,16 @@ export async function GET(
       if (isGenLayerError(err)) {
         return visitorJson(
           visitor,
-          { error: err.code },
-          { status: HTTP_STATUS_BY_CODE[err.code] },
+          {
+            receipt: row,
+            receiptError: {
+              code: err.code,
+              retryable: true,
+              message:
+                "Receipt status refresh is temporarily unavailable. The comparison result remains usable and polling can retry later.",
+            },
+          },
+          { status: 200 },
         );
       }
       throw err;
@@ -161,8 +169,16 @@ export async function POST(
       if (isGenLayerError(err)) {
         return visitorJson(
           visitor,
-          { error: err.code },
-          { status: HTTP_STATUS_BY_CODE[err.code] },
+          {
+            error: err.code,
+            retryable: true,
+            message:
+              "GenLayer receipt creation is temporarily unavailable. Your comparison is saved; try building the receipt again later.",
+          },
+          {
+            status: HTTP_STATUS_BY_CODE[err.code],
+            headers: { "Retry-After": "60" },
+          },
         );
       }
       throw err;

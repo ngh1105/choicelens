@@ -28,6 +28,7 @@ model User {
   watchlist   WatchlistEntry[]
   walletLinkRequests WalletLinkRequest[]
   emailOtps          EmailOtp[]
+  feedback           ComparisonFeedback[]
 }
 
 model Comparison {
@@ -42,6 +43,7 @@ model Comparison {
 
   watchlist WatchlistEntry[]
   receipt   Receipt?
+  feedback  ComparisonFeedback[]
 
   @@index([userId, createdAt])
 }
@@ -60,6 +62,19 @@ model WatchlistEntry {
 
   @@unique([comparisonId, payloadHash])
   @@index([userId, addedAt])
+}
+
+model ComparisonFeedback {
+  id           String     @id @default(cuid())
+  comparisonId String
+  comparison   Comparison @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  helpful      Boolean
+  createdAt    DateTime   @default(now())
+
+  @@index([comparisonId, createdAt])
+  @@index([userId, createdAt])
 }
 
 model Receipt {

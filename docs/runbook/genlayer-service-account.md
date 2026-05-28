@@ -113,7 +113,16 @@ The frontend keeps showing the off-chain receipt while you triage — users are 
 
 ## Recovering from `503 genlayer_rpc_unavailable`
 
-Studionet RPC blip. Verify with `curl $GENLAYER_RPC_URL` or run the smoke script. No app-side action needed once RPC returns; the GET handler will resume status refresh on the next poll cycle.
+User-facing contract: receipt creation should fail clearly without crashing the comparison flow.
+
+1. Confirm API shape from a safe client/test: `POST /api/comparisons/:id/receipt` should return `503` with `retryable: true`, a human-readable `message`, and `Retry-After: 60`. It should not persist a failed receipt row, so retrying later is safe.
+2. Existing pending receipts remain visible: `GET /api/comparisons/:id/receipt` returns `200` with the last receipt plus `receiptError` during RPC outages.
+3. Run `npm run genlayer:smoke` — does it reproduce?
+4. If only smoke fails, check `GENLAYER_RPC_URL`, Studio status, and whether the pinned contract address is visible to the process.
+5. If user writes are impacted for more than a short blip, flip the kill switch (`GENLAYER_NETWORK=mock`, restart/redeploy). New receipts become off-chain only while comparisons remain usable.
+6. When Studio recovers, restore `GENLAYER_NETWORK=studionet`, restart/redeploy, and run `npm run genlayer:smoke:ephemeral` or `npm run genlayer:smoke` before re-enabling live writes.
+
+The frontend keeps showing the off-chain receipt/comparison state while you triage — users are not blocked.
 
 ## Cost notes
 

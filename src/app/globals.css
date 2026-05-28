@@ -332,6 +332,11 @@ select {
   cursor: not-allowed;
 }
 
+.btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .priority-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -685,6 +690,11 @@ input[type="range"]::-moz-range-thumb {
 
 .inline-upgrade-link:hover {
   text-decoration: underline;
+}
+
+.result-feedback {
+  border-top: 1px solid var(--border-hairline);
+  padding-top: 12px;
 }
 
 .receipt-card {

@@ -10,6 +10,8 @@ import {
   FileSignature,
   Wallet,
   CircleDot,
+  ThumbsDown,
+  ThumbsUp,
 } from "lucide-react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import Link from "next/link";
@@ -205,6 +207,8 @@ export default function HomePage() {
   const [isSavingWatchlist, setIsSavingWatchlist] = useState<boolean>(false);
   const [removingWatchId, setRemovingWatchId] = useState<string | null>(null);
   const [isBuildingReceipt, setIsBuildingReceipt] = useState<boolean>(false);
+  const [feedbackByComparison, setFeedbackByComparison] = useState<Record<string, boolean>>({});
+  const [isSendingFeedback, setIsSendingFeedback] = useState<boolean>(false);
   const [pollRestartKey, setPollRestartKey] = useState<number>(0);
 
   const validOptions = useMemo(
@@ -455,6 +459,27 @@ export default function HomePage() {
     }
   }
 
+  async function handleResultFeedback(helpful: boolean) {
+    if (!comparisonId) return;
+    setIsSendingFeedback(true);
+    setActionError(null);
+    try {
+      await fetchJson<{ ok: true; requestId: string }>(
+        `/api/comparisons/${comparisonId}/feedback`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ helpful }),
+        },
+      );
+      setFeedbackByComparison((prev) => ({ ...prev, [comparisonId]: helpful }));
+    } catch (err) {
+      setActionError(errorMessage(err, "Unable to send feedback."));
+    } finally {
+      setIsSendingFeedback(false);
+    }
+  }
+
   const pollComparisonId = useMemo(() => {
     if (!receipt) return null;
     const TERMINAL = new Set([
@@ -607,6 +632,9 @@ export default function HomePage() {
             canSave={Boolean(comparisonId)}
             isSaving={isSavingWatchlist}
             saveBlocked={saveBlockedByUsage}
+            feedback={comparisonId ? feedbackByComparison[comparisonId] ?? null : null}
+            isSendingFeedback={isSendingFeedback}
+            onFeedback={handleResultFeedback}
           />
         </section>
 
@@ -893,6 +921,9 @@ interface ResultViewProps {
   canSave: boolean;
   isSaving: boolean;
   saveBlocked: boolean;
+  feedback: boolean | null;
+  isSendingFeedback: boolean;
+  onFeedback: (helpful: boolean) => void;
 }
 
 function ResultView({
@@ -901,6 +932,9 @@ function ResultView({
   canSave,
   isSaving,
   saveBlocked,
+  feedback,
+  isSendingFeedback,
+  onFeedback,
 }: ResultViewProps) {
   return (
     <div className="panel">
@@ -930,6 +964,11 @@ function ResultView({
               confidence={result.signals.confidence}
               uncertainty={result.signals.uncertainty}
               whatWouldChange={result.signals.whatWouldChange}
+            />
+            <ResultFeedback
+              value={feedback}
+              disabled={!canSave || isSendingFeedback}
+              onFeedback={onFeedback}
             />
           </>
         )}
@@ -1092,6 +1131,47 @@ function Signals({
           ))}
         </ul>
       </div>
+    </div>
+  );
+}
+
+function ResultFeedback({
+  value,
+  disabled,
+  onFeedback,
+}: {
+  value: boolean | null;
+  disabled: boolean;
+  onFeedback: (helpful: boolean) => void;
+}) {
+  return (
+    <div className="result-feedback" aria-live="polite">
+      <span className="section-helper">Was this recommendation useful?</span>
+      <div className="row-actions">
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={() => onFeedback(true)}
+          disabled={disabled}
+          aria-pressed={value === true}
+        >
+          <ThumbsUp size={14} />
+          Helpful
+        </button>
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={() => onFeedback(false)}
+          disabled={disabled}
+          aria-pressed={value === false}
+        >
+          <ThumbsDown size={14} />
+          Not helpful
+        </button>
+      </div>
+      {value !== null ? (
+        <div className="section-helper">Thanks — feedback saved for this result.</div>
+      ) : null}
     </div>
   );
 }

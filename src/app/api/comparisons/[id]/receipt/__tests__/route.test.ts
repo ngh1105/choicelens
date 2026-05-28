@@ -248,7 +248,7 @@ describe("POST /api/comparisons/[id]/receipt", () => {
     expect(saveArgs.receipt.status).toBe("pending");
   });
 
-  it("maps GenLayerError to HTTP code on service path", async () => {
+  it("maps GenLayerError to a retryable HTTP response on service path", async () => {
     process.env.GENLAYER_NETWORK = "studionet";
     (store.getComparison as ReturnType<typeof vi.fn>).mockResolvedValue(comparisonRecord);
     const fakeSvc = {
@@ -262,8 +262,15 @@ describe("POST /api/comparisons/[id]/receipt", () => {
 
     const res = await POST(req(), ctx("cmp1"));
     expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("60");
     const body = await res.json();
-    expect(body.error).toBe("service_account_unavailable");
+    expect(body).toMatchObject({
+      error: "service_account_unavailable",
+      retryable: true,
+      message:
+        "GenLayer receipt creation is temporarily unavailable. Your comparison is saved; try building the receipt again later.",
+    });
+    expect(store.saveReceipt).not.toHaveBeenCalled();
   });
 
   it("returns 404 when comparison missing", async () => {
@@ -359,6 +366,36 @@ describe("GET /api/comparisons/[id]/receipt", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.receipt.status).toBe("pending");
+    expect(store.updateReceiptStatus).not.toHaveBeenCalled();
+  });
+
+  it("returns existing row plus retry metadata when refresh has an RPC outage", async () => {
+    const pending = {
+      ...baseReceipt,
+      status: "pending" as const,
+      submitterKind: "service" as const,
+      transactionHash: "0xabc",
+    };
+    (store.getReceiptForComparison as ReturnType<typeof vi.fn>).mockResolvedValue(pending);
+    const fakeSvc = {
+      isAvailable: () => true,
+      buildReceipt: vi.fn(),
+      refreshReceiptStatus: vi
+        .fn()
+        .mockRejectedValue(new GenLayerError("genlayer_rpc_unavailable", "rpc down")),
+    };
+    (gl.getGenLayerService as ReturnType<typeof vi.fn>).mockReturnValue(fakeSvc);
+
+    const res = await GET(req(), ctx("cmp1"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.receipt).toEqual(pending);
+    expect(body.receiptError).toMatchObject({
+      code: "genlayer_rpc_unavailable",
+      retryable: true,
+      message:
+        "Receipt status refresh is temporarily unavailable. The comparison result remains usable and polling can retry later.",
+    });
     expect(store.updateReceiptStatus).not.toHaveBeenCalled();
   });
 });

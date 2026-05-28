@@ -57,7 +57,7 @@ Browser-side (mirror of server values; safe to expose):
 
 `GenLayerError` codes (`src/lib/genlayer/errors.ts`) map to HTTP via `HTTP_STATUS_BY_CODE`. Notable:
 - `service_account_unavailable` (503) — service path, no key.
-- `genlayer_rpc_unavailable` (503) — RPC down.
+- `genlayer_rpc_unavailable` (503) — RPC down. `POST` returns a retryable error with `Retry-After`; `GET` returns the existing receipt row plus `receiptError` so polling does not erase the usable comparison state.
 - `transaction_timeout` (502) — surfaced to the GET handler, swallowed (returns existing row 200) so the off-chain result remains usable.
 - `wallet_not_connected` (400) — wallet-tx route, missing `transactionHash` or `creatorAddress`.
 - `wallet_rejected` (400) — wallet-tx route, malformed hex.
@@ -77,7 +77,15 @@ npm run genlayer:smoke:ephemeral    # single-process deploy + smoke with an in-m
 `scripts/deploy-and-smoke-ephemeral.ts` is a one-shot variant that generates a temporary
 private key in-process for ad-hoc Studionet validation; it never writes the key to disk.
 
-See `docs/runbook/genlayer-service-account.md` for top-up, rotation, and `503` recovery. The current canonical operator-owned Studionet contract is `0xD7E2910DBbCb701992591b4285985a3Ad0e0A418` (deploy tx `0x6e8a14ae19a9b5c5b432172569897f17b448fd613196f6437209f55bdc86bba`, smoke tx `0xafee3bdcd4744e5933c00ad5bbace0d6f3ac01f561bfd6444570bb22f6c8f806`, both `FINALIZED` / `SUCCESS`).
+## Degraded service behavior
+
+When GenLayer is unavailable, comparisons and existing off-chain data remain the source of truth.
+
+- Service-path `POST /api/comparisons/:id/receipt` failures return a clear JSON error (`error`, `message`, `retryable: true`) and `Retry-After: 60`. No failed receipt row is persisted, so the user can retry later without consuming an additional receipt for the same comparison.
+- Polling `GET /api/comparisons/:id/receipt` returns `200` with the last known receipt row plus `receiptError` for RPC/service outages. The UI should keep showing the receipt/comparison as usable and retry polling later.
+- For prolonged outages, use the kill switch (`GENLAYER_NETWORK=mock`) so new receipts are off-chain only while live Studionet is triaged.
+
+The current canonical operator-owned Studionet contract is `0xD7E2910DBbCb701992591b4285985a3Ad0e0A418` (deploy tx `0x6e8a14ae19a9b5c5b432172569897f17b448fd613196f6437209f55bdc86bba`, smoke tx `0xafee3bdcd4744e5933c00ad5bbace0d6f3ac01f561bfd6444570bb22f6c8f806`, both `FINALIZED` / `SUCCESS`).
 
 ## Contract storage notes
 
