@@ -1,3 +1,5 @@
+import { captureException } from "@/lib/observability";
+
 export type LogContext = Record<
   string,
   string | number | boolean | null | undefined
@@ -24,8 +26,14 @@ export function logRequestError(
   const error = err instanceof Error
     ? { name: err.name, message: err.message }
     : { name: "UnknownError", message: String(err) };
+  const cleaned = cleanContext(context);
   console.error(
     "[request_error]",
-    JSON.stringify({ requestId, message, error, context: cleanContext(context) }),
+    JSON.stringify({ requestId, message, error, context: cleaned }),
   );
+  captureException(err instanceof Error ? err : new Error(String(err)), {
+    requestId,
+    message,
+    ...(cleaned ?? {}),
+  });
 }

@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  applyApiRateLimit,
+  rateLimitedResponse,
+} from "@/lib/apiRateLimit";
 import { trackServerEvent } from "@/lib/analytics";
 import { getRequestUser, type RequestUser } from "@/lib/request-user";
 import { saveComparisonFeedback, StoreError } from "@/lib/store";
@@ -32,6 +36,16 @@ export async function POST(
   } catch (err) {
     logRequestError(requestId, `POST /api/comparisons/${id}/feedback failed`, err);
     return NextResponse.json({ error: "internal_error", requestId }, { status: 500 });
+  }
+
+  const limit = await applyApiRateLimit(request, {
+    scope: "comparisons:feedback",
+    limit: 60,
+    windowMs: 60 * 60 * 1000,
+    identifier: visitor.id,
+  });
+  if (limit.limited) {
+    return rateLimitedResponse({ result: limit, requestId });
   }
 
   let payload: unknown;

@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import {
+  applyApiRateLimit,
+  rateLimitedResponse,
+} from "@/lib/apiRateLimit";
+import {
   isSiweAuthError,
   verifySiweForUser,
 } from "@/lib/auth/siwe";
@@ -33,6 +37,14 @@ function isUniqueConflict(err: unknown): boolean {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const limit = await applyApiRateLimit(request, {
+    scope: "siwe:verify",
+    limit: 20,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limit.limited) {
+    return rateLimitedResponse({ result: limit });
+  }
   let visitor;
   try {
     visitor = await getOrCreateVisitorUser(request);

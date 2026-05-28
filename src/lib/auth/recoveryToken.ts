@@ -34,6 +34,16 @@ function fromBase64url(input: string): Buffer {
   return Buffer.from(padded, "base64");
 }
 
+let warnedAboutRecoveryFallback = false;
+
+function warnRecoveryFallback(reason: string): void {
+  if (warnedAboutRecoveryFallback) return;
+  warnedAboutRecoveryFallback = true;
+  console.warn(
+    `[security] ${reason}; using insecure dev fallback for recovery tokens. Recovery tokens are forgeable in this environment.`,
+  );
+}
+
 function getSecret(): string {
   const secret = process.env.WALLET_RECOVERY_TOKEN_SECRET?.trim();
   if (secret) return `choicelens-wallet-recovery-v1:${secret}`;
@@ -47,6 +57,9 @@ function getSecret(): string {
       "WALLET_RECOVERY_TOKEN_SECRET or WALLET_SESSION_SECRET is required in production for recovery tokens.",
     );
   }
+  warnRecoveryFallback(
+    "WALLET_RECOVERY_TOKEN_SECRET and WALLET_SESSION_SECRET not set",
+  );
   return "choicelens-wallet-recovery-v1:dev-wallet-session-secret";
 }
 

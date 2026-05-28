@@ -6,9 +6,11 @@ Use this before each beta/prod deploy and when changing auth, billing, compariso
 
 - Product events are emitted through `src/lib/analytics.ts` as structured `[analytics]` console logs.
 - Current MVP events: `comparison_started`, `comparison_completed`, `saved_watchlist`, `receipt_created`, `upgrade_clicked`, `recovery_started`, `recovery_completed`, `result_helpful`, `result_unhelpful`.
-- Keep event properties PII-light: IDs, counts, status, source. Do not log emails, wallet signatures, Stripe secrets, OTPs, private keys, raw comparison notes, or webhook payloads.
-- Production log drain should preserve JSON console output and support filtering by `[analytics]` and API error prefix.
-- Backlog: replace console sink with a real analytics provider or server `/api/events` collector once privacy requirements are settled.
+- Server-side errors are emitted through `src/lib/requestLog.ts` as structured `[request_error]` console logs and forwarded via `src/lib/observability.ts` to Sentry (when `globalThis.Sentry` is wired) and/or to `LOG_DRAIN_URL` if set.
+- Each error log includes a stable `requestId` propagated from `x-request-id` / `x-vercel-id` (generated when missing) so user-facing errors can be cross-referenced in logs.
+- Keep event/error properties PII-light: IDs, counts, status, source. Do not log emails, wallet signatures, Stripe secrets, OTPs, private keys, raw comparison notes, or webhook payloads.
+- Production log drain should preserve JSON console output and support filtering by `[analytics]` and `[request_error]` prefixes.
+- Backlog: replace console sink with a real analytics provider or server `/api/events` collector once privacy requirements are settled; bind a real Sentry client when ready.
 
 ## Rate limiting and abuse controls
 
@@ -16,17 +18,17 @@ Existing controls:
 
 - Plan limits gate comparison, watchlist, service receipt, and wallet receipt creation.
 - Recovery OTP verification has OTP attempt limiting in the recovery layer.
+- Recovery challenge endpoint has IP+token in-memory rate limiting (`recovery-challenge:*`).
+- `POST /api/comparisons`, `POST /api/comparisons/[id]/feedback`, `POST /api/auth/siwe/nonce`, `POST /api/auth/siwe/verify`, and `POST /api/billing/checkout` have per-IP+user in-memory rate limits via `src/lib/apiRateLimit.ts`.
 - Billing webhook verifies Stripe signatures.
 - Admin GenLayer health requires an admin token.
 
 Known gaps to close before public launch:
 
-- Add IP/user rate limits for `POST /api/comparisons`, especially anonymous visitors.
-- Add rate limits for SIWE nonce/verify: `POST /api/auth/siwe/nonce`, `POST /api/auth/siwe/verify`.
-- Add request throttles for billing session creation: `POST /api/billing/checkout`, `POST /api/billing/portal`.
-- Add explicit per-email/IP throttles around `POST /api/auth/recovery/request` and recovery challenge/confirm endpoints if not fully covered by DB-layer OTP limits.
-- Add write throttles for receipt creation endpoints, even though plan limits exist, to reduce wallet/service path spam.
-- Prefer shared storage (Redis/KV) in production; in-memory rate limiting is only acceptable for local/dev or single-instance beta.
+- Replace the in-memory backend in `src/lib/apiRateLimit.ts` with a shared Redis/Upstash backend before multi-instance deploys; serverless cold starts and horizontal scale make in-memory effectively a no-op at scale. Use `setRateLimitBackend` to swap.
+- Add request throttles for `POST /api/billing/portal` and the watchlist/receipt write endpoints; plan limits help but do not bound burst abuse.
+- Add explicit per-email/IP throttles around `POST /api/auth/recovery/request` and recovery confirm endpoints if not fully covered by DB-layer OTP limits.
+- Consider middleware-level guards (Edge runtime) so rate limit responses arrive before per-route work.
 
 ## Deployment smoke
 

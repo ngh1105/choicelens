@@ -35,12 +35,23 @@ function fromBase64url(input: string): Buffer {
   return Buffer.from(padded, "base64");
 }
 
+let warnedAboutFallbackSessionSecret = false;
+
+function warnFallbackSessionSecret(): void {
+  if (warnedAboutFallbackSessionSecret) return;
+  warnedAboutFallbackSessionSecret = true;
+  console.warn(
+    "[security] WALLET_SESSION_SECRET not set; using insecure dev fallback. Wallet sessions are forgeable in this environment.",
+  );
+}
+
 function getSessionSecret(): string {
   const secret = process.env.WALLET_SESSION_SECRET?.trim();
   if (secret) return secret;
   if (process.env.NODE_ENV === "production") {
     throw new Error("WALLET_SESSION_SECRET is required in production.");
   }
+  warnFallbackSessionSecret();
   return "dev-wallet-session-secret";
 }
 
