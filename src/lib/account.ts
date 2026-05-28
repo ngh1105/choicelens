@@ -5,8 +5,7 @@ import {
   verifySiweMessage,
 } from "@/lib/auth/siwe";
 import { createNonce } from "@/lib/auth/walletSession";
-import { isBillingEnabled } from "@/lib/billing/flag";
-import { getEffectivePlanId, resolvePlanId, type PlanId } from "@/lib/plans";
+import { resolvePlanId, type PlanId } from "@/lib/plans";
 
 export const WALLET_CHANGE_TTL_MS = 10 * 60 * 1000;
 
@@ -50,10 +49,9 @@ function formatAccountSummary(user: {
   stripeCurrentPeriodEnd: Date | null;
 }): AccountSummary {
   const plan = resolvePlanId(user.plan);
-  const effectivePlan = getEffectivePlanId(user.plan, isBillingEnabled());
   return {
     plan,
-    effectivePlan,
+    effectivePlan: plan,
     primaryWalletAddress: user.primaryWalletAddress,
     recoveryEmail: user.recoveryEmail,
     stripeCustomerId: user.stripeCustomerId,
