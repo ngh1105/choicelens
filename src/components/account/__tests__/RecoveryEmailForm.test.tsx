@@ -45,7 +45,10 @@ describe("RecoveryEmailForm", () => {
     fireEvent.submit(saveButton().form!);
 
     await waitFor(() => {
-      expect(onSaved).toHaveBeenCalledWith("name@example.com");
+      expect(onSaved).toHaveBeenCalledWith({
+        recoveryEmail: "name@example.com",
+        recoveryEmailVerifiedAt: null,
+      });
     });
     const body = JSON.parse(
       (fetchMock.mock.calls[0]?.[1] as RequestInit).body as string,
@@ -67,7 +70,10 @@ describe("RecoveryEmailForm", () => {
     fireEvent.submit(saveButton().form!);
 
     await waitFor(() => {
-      expect(onSaved).toHaveBeenCalledWith(null);
+      expect(onSaved).toHaveBeenCalledWith({
+        recoveryEmail: null,
+        recoveryEmailVerifiedAt: null,
+      });
     });
     const body = JSON.parse(
       (fetchMock.mock.calls[0]?.[1] as RequestInit).body as string,

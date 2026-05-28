@@ -94,6 +94,7 @@ interface ConsumeOtpArgs {
   email: string;
   purpose: OtpPurpose;
   code: string;
+  userId?: string;
 }
 
 export interface ConsumedOtp {
@@ -117,6 +118,7 @@ export async function consumeOtp(args: ConsumeOtpArgs): Promise<ConsumedOtp> {
       purpose: args.purpose,
       consumedAt: null,
       expiresAt: { gt: now },
+      ...(args.userId ? { userId: args.userId } : {}),
     },
     orderBy: { createdAt: "desc" },
     select: {

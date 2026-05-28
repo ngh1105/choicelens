@@ -29,6 +29,7 @@ function defaultAccount(): AccountSummary {
     plan: "free",
     primaryWalletAddress: null,
     recoveryEmail: null,
+    recoveryEmailVerifiedAt: null,
     stripeSubscriptionStatus: null,
     stripeCurrentPeriodEnd: null,
   };
@@ -39,6 +40,7 @@ function normalizeAccount(value: RawAccountSummary): AccountSummary {
     plan: value.effectivePlan ?? value.plan ?? "free",
     primaryWalletAddress: value.primaryWalletAddress ?? null,
     recoveryEmail: value.recoveryEmail ?? null,
+    recoveryEmailVerifiedAt: value.recoveryEmailVerifiedAt ?? null,
     stripeSubscriptionStatus:
       value.stripeSubscriptionStatus ?? value.subscriptionStatus ?? null,
     stripeCurrentPeriodEnd:
@@ -145,10 +147,12 @@ export function AccountSettings({ billingEnabled = true }: AccountSettingsProps)
         <div className="panel-body">
           <RecoveryEmailForm
             initialEmail={activeAccount.recoveryEmail}
-            onSaved={(recoveryEmail) =>
+            verifiedAt={activeAccount.recoveryEmailVerifiedAt}
+            onSaved={({ recoveryEmail, recoveryEmailVerifiedAt }) =>
               setAccount((current) => ({
                 ...(current ?? defaultAccount()),
                 recoveryEmail,
+                recoveryEmailVerifiedAt,
               }))
             }
           />

@@ -42,6 +42,7 @@ beforeEach(() => {
     effectivePlan: "plus",
     primaryWalletAddress: walletUser.walletAddress,
     recoveryEmail: "name@example.com",
+    recoveryEmailVerifiedAt: null,
     stripeCustomerId: "cus_123",
     stripeSubscriptionStatus: "active",
     stripeCurrentPeriodEnd: "2026-06-01T00:00:00.000Z",

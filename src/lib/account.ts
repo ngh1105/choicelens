@@ -14,6 +14,7 @@ export interface AccountSummary {
   effectivePlan: PlanId;
   primaryWalletAddress: string | null;
   recoveryEmail: string | null;
+  recoveryEmailVerifiedAt: string | null;
   stripeCustomerId: string | null;
   stripeSubscriptionStatus: string | null;
   stripeCurrentPeriodEnd: string | null;
@@ -44,6 +45,7 @@ function formatAccountSummary(user: {
   plan: string;
   primaryWalletAddress: string | null;
   recoveryEmail: string | null;
+  recoveryEmailVerifiedAt: Date | null;
   stripeCustomerId: string | null;
   stripeSubscriptionStatus: string | null;
   stripeCurrentPeriodEnd: Date | null;
@@ -54,6 +56,7 @@ function formatAccountSummary(user: {
     effectivePlan: plan,
     primaryWalletAddress: user.primaryWalletAddress,
     recoveryEmail: user.recoveryEmail,
+    recoveryEmailVerifiedAt: toIso(user.recoveryEmailVerifiedAt),
     stripeCustomerId: user.stripeCustomerId,
     stripeSubscriptionStatus: user.stripeSubscriptionStatus,
     stripeCurrentPeriodEnd: toIso(user.stripeCurrentPeriodEnd),
@@ -67,6 +70,7 @@ export async function getAccountSummary(userId: string): Promise<AccountSummary>
       plan: true,
       primaryWalletAddress: true,
       recoveryEmail: true,
+      recoveryEmailVerifiedAt: true,
       stripeCustomerId: true,
       stripeSubscriptionStatus: true,
       stripeCurrentPeriodEnd: true,
@@ -106,9 +110,27 @@ export async function updateRecoveryEmail(
   value: unknown,
 ): Promise<string | null> {
   const recoveryEmail = parseRecoveryEmail(value);
+  const current = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { recoveryEmail: true },
+  });
+  if (!current) {
+    throw new AccountError("account_not_found", "Account was not found.");
+  }
+
+  // Reset verification when the email actually changes (or is cleared).
+  // Setting the same email back keeps the existing verifiedAt timestamp.
+  const data: {
+    recoveryEmail: string | null;
+    recoveryEmailVerifiedAt?: Date | null;
+  } = { recoveryEmail };
+  if (current.recoveryEmail !== recoveryEmail) {
+    data.recoveryEmailVerifiedAt = null;
+  }
+
   const user = await prisma.user.update({
     where: { id: userId },
-    data: { recoveryEmail },
+    data,
     select: { recoveryEmail: true },
   });
   return user.recoveryEmail;
