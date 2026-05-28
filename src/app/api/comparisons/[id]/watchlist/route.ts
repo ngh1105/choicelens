@@ -8,6 +8,7 @@ import {
   planLimitPayload,
 } from "@/lib/usage";
 import { visitorJson } from "@/lib/visitor";
+import { trackServerEvent } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,12 @@ export async function POST(
       await assertWithinPlanLimit(visitor, "watchlist");
     }
     const entry = await addWatchlistEntry(visitor.id, { comparisonId: id });
+    trackServerEvent("saved_watchlist", {
+      userId: visitor.id,
+      comparisonId: id,
+      watchlistEntryId: entry.id,
+      idempotent: Boolean(existing),
+    });
     return visitorJson(visitor, { entry }, { status: 201 });
   } catch (err) {
     if (err instanceof PlanLimitError) {

@@ -31,6 +31,7 @@ import { isGenLayerWalletPathConfigured, isWalletConfigured } from "@/lib/wallet
 import { ReceiptCard } from "@/components/receipt/ReceiptCard";
 import { WalletReceiptControls } from "@/components/receipt/WalletReceiptControls";
 import { useReceiptPolling, type PolledReceipt } from "@/lib/hooks/useReceiptPolling";
+import { trackClientEvent } from "@/lib/analytics";
 
 interface WatchlistEntry {
   id: string;
@@ -160,6 +161,16 @@ export function isUsageBlocked(
   return usage?.usage[feature].blocked ?? false;
 }
 
+const STARTER_PROMPT = "Compare these options for a primary work laptop under $1500.";
+
+const EXAMPLE_PROMPTS = [
+  "Pick the best work laptop under $1500 for travel and video calls.",
+  "Compare apartments for a 12-month lease near public transit.",
+  "Choose a customer support tool for a five-person startup.",
+  "Rank vacation rentals for a quiet family trip.",
+  "Decide which online course gives the best career value.",
+];
+
 const STARTER_OPTIONS: OptionInput[] = [
   { id: "starter-1", name: "Option A", url: "", notes: "" },
   { id: "starter-2", name: "Option B", url: "", notes: "" },
@@ -175,9 +186,7 @@ const AGENT_ORDER: AgentName[] = [
 ];
 
 export default function HomePage() {
-  const [prompt, setPrompt] = useState<string>(
-    "Compare these options for a primary work laptop under $1500.",
-  );
+  const [prompt, setPrompt] = useState<string>(STARTER_PROMPT);
   const [options, setOptions] = useState<OptionInput[]>(STARTER_OPTIONS);
   const [priorities, setPriorities] =
     useState<PriorityWeights>(DEFAULT_PRIORITIES);
@@ -345,6 +354,7 @@ export default function HomePage() {
   }
 
   function handleReset() {
+    setPrompt(STARTER_PROMPT);
     setOptions(STARTER_OPTIONS.map((o) => ({ ...o })));
     setPriorities(DEFAULT_PRIORITIES);
     setMustHaves("");
@@ -495,11 +505,20 @@ export default function HomePage() {
           </span>
         </div>
         <div className="app-header-actions">
+          <Link className="app-header-link" href="/help">
+            Help
+          </Link>
           <Link className="app-header-link" href="/pricing">
             Pricing
           </Link>
           <Link className="app-header-link" href="/account">
             Account
+          </Link>
+          <Link className="app-header-link" href="/privacy">
+            Privacy
+          </Link>
+          <Link className="app-header-link" href="/terms">
+            Terms
           </Link>
           <span className="pill">
             <span
@@ -531,6 +550,7 @@ export default function HomePage() {
         <section className="panel-stack">
           <Composer
             prompt={prompt}
+            examplePrompts={EXAMPLE_PROMPTS}
             onPromptChange={setPrompt}
             options={options}
             onUpdateOption={updateOption}
@@ -562,7 +582,11 @@ export default function HomePage() {
                 <div className="section-helper" role="alert">
                   {actionError}
                   {isUpgradeMessage(actionError) ? (
-                    <a className="inline-upgrade-link" href="/pricing">
+                    <a
+                      className="inline-upgrade-link"
+                      href="/pricing"
+                      onClick={() => trackClientEvent("upgrade_clicked", { source: "action_error" })}
+                    >
                       View pricing
                     </a>
                   ) : null}
@@ -618,6 +642,7 @@ export default function HomePage() {
 
 interface ComposerProps {
   prompt: string;
+  examplePrompts: string[];
   onPromptChange: (v: string) => void;
   options: OptionInput[];
   onUpdateOption: (id: string, patch: Partial<OptionInput>) => void;
@@ -633,6 +658,7 @@ interface ComposerProps {
 function Composer(props: ComposerProps) {
   const {
     prompt,
+    examplePrompts,
     onPromptChange,
     options,
     onUpdateOption,
@@ -648,12 +674,29 @@ function Composer(props: ComposerProps) {
   return (
     <div className="panel">
       <div className="panel-header">
-        <span className="panel-title">Comparison</span>
+        <span className="panel-title">Compare your options</span>
         <span className="panel-subtitle">
-          {options.length}/10 options
+          Clear recommendation, tradeoffs, and uncertainty
         </span>
       </div>
       <div className="panel-body panel-stack">
+        <div className="section-helper">
+          Describe the choice, add your options, and ChoiceLens will rank them
+          with practical tradeoffs. Wallets are optional for the free flow;
+          receipts are optional snapshots for later.
+        </div>
+        <div className="example-prompt-list" aria-label="Example prompts">
+          {examplePrompts.map((example) => (
+            <button
+              className="example-prompt"
+              key={example}
+              type="button"
+              onClick={() => onPromptChange(example)}
+            >
+              {example}
+            </button>
+          ))}
+        </div>
         <div className="field">
           <label className="field-label" htmlFor="prompt">
             What are you choosing
@@ -1100,7 +1143,11 @@ function UsagePanel({
               usage.usage.receipts.blocked) ? (
               <p className="section-helper usage-upgrade-note">
                 Upgrade to Plus to keep going.
-                <a className="inline-upgrade-link" href="/pricing">
+                <a
+                  className="inline-upgrade-link"
+                  href="/pricing"
+                  onClick={() => trackClientEvent("upgrade_clicked", { source: "usage_panel" })}
+                >
                   View pricing
                 </a>
               </p>
@@ -1224,13 +1271,13 @@ function ReceiptPanel({
     <div className="panel">
       <div className="panel-header">
         <span className="panel-title">Decision receipt</span>
-        <span className="panel-subtitle">GenLayer placeholder</span>
+        <span className="panel-subtitle">Optional, premium-friendly snapshot</span>
       </div>
       <div className="panel-body panel-stack">
         <div className="section-helper">
-          Receipts anchor a hashed scoring snapshot for portability. V1 produces
-          an off-chain receipt; on-chain anchoring is wired through the
-          GenLayer service boundary.
+          Receipts save a hashed snapshot of the scoring result so you can revisit
+          what was compared later. They are optional, may count against plan
+          limits, and are separate from the free comparison flow.
         </div>
         <div className="row-actions">
           <button
@@ -1251,7 +1298,11 @@ function ReceiptPanel({
         {usageBlocked ? (
           <div className="section-helper">
             Free receipt limit reached. Upgrade to Plus to keep going.
-            <a className="inline-upgrade-link" href="/pricing">
+            <a
+              className="inline-upgrade-link"
+              href="/pricing"
+              onClick={() => trackClientEvent("upgrade_clicked", { source: "receipt_limit" })}
+            >
               View pricing
             </a>
           </div>

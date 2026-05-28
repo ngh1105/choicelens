@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { trackServerEvent } from "@/lib/analytics";
 import { requestRecoveryOtp } from "@/lib/auth/recovery";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     await requestRecoveryOtp({ email: readEmail(payload) });
+    trackServerEvent("recovery_started");
   } catch (err) {
     // recovery layer is meant to be silent; an exception here is a real bug
     // (DB error, programming mistake). Log it but keep the response generic

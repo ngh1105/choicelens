@@ -12,6 +12,11 @@ export default function RecoverPage() {
             Lost wallet recovery
           </p>
           <h1 className="billing-page-title">Recover your account</h1>
+          <p className="section-helper">
+            Silent recovery: if the email is not recognized or not verified, we
+            still show the same next-step message so account status is not
+            exposed.
+          </p>
         </div>
         <a className="btn btn-ghost" href="/account">
           Back to account

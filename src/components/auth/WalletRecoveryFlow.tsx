@@ -153,9 +153,10 @@ export function WalletRecoveryFlow() {
         </div>
         <div className="panel-body">
           <p className="section-helper">
-            Use the email you previously verified for recovery. We send a
-            one-time code, then a fresh signature from your new wallet binds it
-            as your primary. The old wallet stops being able to sign in.
+            Use the email you previously verified for recovery. If it matches an
+            account, we send a one-time code; if it does not, the response stays
+            intentionally quiet to protect account privacy. After verification,
+            a fresh signature from your new wallet makes it the primary signer.
           </p>
 
           {stage === "email" ? (

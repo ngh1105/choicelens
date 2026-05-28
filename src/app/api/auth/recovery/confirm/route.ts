@@ -6,6 +6,7 @@ import {
   createWalletSessionToken,
 } from "@/lib/auth/walletSession";
 import { VISITOR_COOKIE_NAME } from "@/lib/visitor";
+import { trackServerEvent } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       maxAge: 0,
     });
 
+    trackServerEvent("recovery_completed", { userId: result.userId });
     return response;
   } catch (err) {
     if (isSiweAuthError(err)) {

@@ -15,6 +15,7 @@ import {
   planLimitPayload,
 } from "@/lib/usage";
 import { visitorJson } from "@/lib/visitor";
+import { trackServerEvent } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -123,8 +124,18 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
   try {
     await assertWithinPlanLimit(visitor, "comparisons");
+    trackServerEvent("comparison_started", {
+      userId: visitor.id,
+      optionCount: input.options.length,
+    });
     const result = runComparison(input);
     const record = await saveComparison(visitor.id, { input, result });
+    trackServerEvent("comparison_completed", {
+      userId: visitor.id,
+      comparisonId: record.id,
+      optionCount: input.options.length,
+      topScore: result.topPick.finalScore,
+    });
     return visitorJson(visitor, { comparison: record }, { status: 201 });
   } catch (err) {
     if (err instanceof PlanLimitError) {
