@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 
 vi.mock("@/lib/visitor", () => ({
@@ -158,5 +158,73 @@ describe("POST /api/auth/siwe/verify", () => {
 
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "wallet_already_linked" });
+  });
+
+  describe("BILLING_ENABLED beta plus-grant", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("grants Plus on SIWE verify when BILLING_ENABLED=false", async () => {
+      vi.stubEnv("BILLING_ENABLED", "false");
+
+      const res = await POST(jsonRequest({ message: "msg", signature: "sig" }));
+
+      expect(res.status).toBe(200);
+      expect(prisma.user.update).toHaveBeenCalledTimes(1);
+      const updateArgs = vi.mocked(prisma.user.update).mock.calls[0][0];
+      expect(updateArgs.data).toMatchObject({
+        primaryWalletAddress: "0xCAfe0000000000000000000000000000000000fe",
+        plan: "plus",
+      });
+    });
+
+    it("leaves DB plan untouched when BILLING_ENABLED=true", async () => {
+      vi.stubEnv("BILLING_ENABLED", "true");
+
+      const res = await POST(jsonRequest({ message: "msg", signature: "sig" }));
+
+      expect(res.status).toBe(200);
+      const updateArgs = vi.mocked(prisma.user.update).mock.calls[0][0];
+      expect(updateArgs.data).not.toHaveProperty("plan");
+    });
+
+    it("is idempotent when an existing Plus user re-verifies the same wallet during beta", async () => {
+      vi.stubEnv("BILLING_ENABLED", "false");
+      vi.mocked(prisma.user.findUnique)
+        .mockResolvedValueOnce({
+          primaryWalletAddress: "0xCAfe0000000000000000000000000000000000fe",
+        } as never)
+        .mockResolvedValueOnce({ id: "user_1" } as never);
+      vi.mocked(prisma.user.update).mockResolvedValue({
+        id: "user_1",
+        plan: "plus",
+        primaryWalletAddress: "0xCAfe0000000000000000000000000000000000fe",
+        recoveryEmail: null,
+        stripeSubscriptionStatus: null,
+        stripeCurrentPeriodEnd: null,
+      } as never);
+
+      const res = await POST(jsonRequest({ message: "msg", signature: "sig" }));
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { account: { plan: string } };
+      expect(body.account.plan).toBe("plus");
+      const updateArgs = vi.mocked(prisma.user.update).mock.calls[0][0];
+      expect(updateArgs.data).toMatchObject({ plan: "plus" });
+    });
+
+    it("does not write plan when verify hits the wallet_already_linked 409 path during beta", async () => {
+      vi.stubEnv("BILLING_ENABLED", "false");
+      vi.mocked(prisma.user.findUnique)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: "user_other" } as never);
+
+      const res = await POST(jsonRequest({ message: "msg", signature: "sig" }));
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "wallet_already_linked" });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
   });
 });

@@ -108,7 +108,7 @@ describe("usage service", () => {
     });
   });
 
-  it("treats stored-free users as effective-Plus when BILLING_ENABLED=false", async () => {
+  it("keeps stored-free users on Free even when BILLING_ENABLED=false", async () => {
     vi.stubEnv("BILLING_ENABLED", "false");
     vi.mocked(prisma.comparison.count).mockResolvedValue(200);
 
@@ -117,14 +117,8 @@ describe("usage service", () => {
       new Date("2026-05-22T00:00:00.000Z"),
     );
 
-    expect(summary.plan).toBe("plus");
-    expect(summary.usage.comparisons).toEqual({
-      used: 200,
-      limit: null,
-      remaining: null,
-      percent: null,
-      blocked: false,
-    });
+    expect(summary.plan).toBe("free");
+    expect(summary.usage.comparisons.blocked).toBe(true);
   });
 
   it("throws typed plan limit errors when blocked", async () => {

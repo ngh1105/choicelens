@@ -1,6 +1,5 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
-import { isBillingEnabled } from "./billing/flag";
 import {
   formatPlanLimitMessage,
   getPlanDefinition,
@@ -98,7 +97,7 @@ export async function getUsageSummaryForUser(
   user: UsageUser,
   now = new Date(),
 ): Promise<UsageSummary> {
-  const plan = getPlanDefinition(isBillingEnabled() ? user.plan : "plus");
+  const plan = getPlanDefinition(user.plan);
   const { start, reset } = utcMonthWindow(now);
   const [comparisons, watchlist, receipts] = await Promise.all([
     client.comparison.count({

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { CalendarClock, RefreshCw, ShieldCheck } from "lucide-react";
 import { BillingPortalButton } from "@/components/account/BillingPortalButton";
 import { PrimaryWalletPanel } from "@/components/account/PrimaryWalletPanel";
@@ -166,11 +167,16 @@ export function AccountSettings({ billingEnabled = true }: AccountSettingsProps)
             <BillingPortalButton
               disabled={!activeAccount.stripeSubscriptionStatus}
             />
+          ) : activeAccount.plan === "plus" ? (
+            <p className="section-helper">
+              You&apos;re on Plus during the open beta. No billing portal yet —
+              there&apos;s no paid subscription to manage.
+            </p>
           ) : (
             <p className="section-helper">
-              Plus features are unlocked for everyone during the open beta. No
-              billing portal yet — you don&apos;t have a paid subscription to
-              manage.
+              Connect a wallet on{" "}
+              <Link href="/pricing">/pricing</Link>{" "}
+              to get Plus during the open beta.
             </p>
           )}
         </div>

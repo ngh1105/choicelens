@@ -55,14 +55,6 @@ export function resolvePlanId(value: string | null | undefined): PlanId {
   return "free";
 }
 
-export function getEffectivePlanId(
-  storedPlan: string | null | undefined,
-  billingEnabled: boolean,
-): PlanId {
-  if (!billingEnabled) return "plus";
-  return resolvePlanId(storedPlan);
-}
-
 export function getPlanDefinition(
   value: string | null | undefined,
 ): PlanDefinition {
