@@ -19,6 +19,23 @@ interface SaveResponse {
   error?: string;
 }
 
+const ERROR_MESSAGES: Record<string, string> = {
+  recovery_email_invalid: "Enter a valid recovery email address.",
+  recovery_email_already_used:
+    "This recovery email is already used by another account.",
+  account_not_found: "Account was not found. Refresh and try again.",
+  wallet_session_required: "Sign in with your wallet and try again.",
+  otp_invalid_or_expired: "That code is incorrect or expired. Request a new code.",
+  otp_rate_limited: "Too many codes requested. Try again later.",
+  otp_locked: "Too many incorrect attempts. Request a new code.",
+  internal_error: "Something went wrong. Try again later.",
+};
+
+function errorMessage(code: string | undefined, fallback: string): string {
+  if (!code) return fallback;
+  return ERROR_MESSAGES[code] ?? fallback;
+}
+
 interface VerifyRequestResponse {
   delivered?: boolean;
   expiresAt?: string;
@@ -78,7 +95,9 @@ export function RecoveryEmailForm({
       });
       const body = (await response.json().catch(() => ({}))) as SaveResponse;
       if (!response.ok) {
-        throw new Error(body.error || "Recovery email could not be saved.");
+        throw new Error(
+          errorMessage(body.error, "Recovery email could not be saved."),
+        );
       }
       const next = body.recoveryEmail ?? recoveryEmail;
       setEmail(next ?? "");
@@ -107,7 +126,9 @@ export function RecoveryEmailForm({
         .json()
         .catch(() => ({}))) as VerifyRequestResponse;
       if (!response.ok) {
-        throw new Error(body.error || "Verification code could not be sent.");
+        throw new Error(
+          errorMessage(body.error, "Verification code could not be sent."),
+        );
       }
       setVerifyStage("sent");
       setVerifyMessage(
@@ -139,7 +160,7 @@ export function RecoveryEmailForm({
         .json()
         .catch(() => ({}))) as VerifyConfirmResponse;
       if (!response.ok || !body.recoveryEmailVerifiedAt) {
-        throw new Error(body.error || "Code could not be verified.");
+        throw new Error(errorMessage(body.error, "Code could not be verified."));
       }
       setVerifiedAt(body.recoveryEmailVerifiedAt);
       setVerifyStage("idle");

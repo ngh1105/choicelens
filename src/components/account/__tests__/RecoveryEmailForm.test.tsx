@@ -81,7 +81,7 @@ describe("RecoveryEmailForm", () => {
     expect(body).toEqual({ recoveryEmail: null });
   });
 
-  it("surfaces the API error code when validation fails", async () => {
+  it("shows friendly copy when validation fails", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "recovery_email_invalid" }), {
         status: 400,
@@ -95,7 +95,28 @@ describe("RecoveryEmailForm", () => {
     fireEvent.submit(saveButton().form!);
 
     await waitFor(() => {
-      expect(screen.getByText("recovery_email_invalid")).toBeTruthy();
+      expect(screen.getByText("Enter a valid recovery email address.")).toBeTruthy();
+    });
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("shows friendly copy when recovery email is already used", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "recovery_email_already_used" }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const onSaved = vi.fn();
+    render(<RecoveryEmailForm initialEmail={null} onSaved={onSaved} />);
+    fireEvent.change(emailInput(), { target: { value: "name@example.com" } });
+
+    fireEvent.submit(saveButton().form!);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("This recovery email is already used by another account."),
+      ).toBeTruthy();
     });
     expect(onSaved).not.toHaveBeenCalled();
   });

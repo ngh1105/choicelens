@@ -28,6 +28,28 @@ interface ConfirmResponse {
   error?: string;
 }
 
+const ERROR_MESSAGES: Record<string, string> = {
+  invalid_json: "Invalid request. Refresh and try again.",
+  otp_invalid_or_expired: "That code is incorrect or expired. Request a new code.",
+  otp_rate_limited: "Too many codes requested. Try again later.",
+  otp_locked: "Too many incorrect attempts. Request a new code.",
+  recovery_email_invalid: "Enter a valid recovery email address.",
+  recovery_token_invalid: "Recovery session expired. Request a new code.",
+  recovery_locked: "Recovery is temporarily locked for this account.",
+  recovery_challenge_rate_limited:
+    "Too many signing attempts. Request a new recovery code.",
+  wallet_same_as_current:
+    "Connect a different wallet from the current primary wallet.",
+  wallet_already_linked: "That wallet is already linked to another account.",
+  wallet_invalid: "The connected wallet could not be verified.",
+  internal_error: "Something went wrong. Try again later.",
+};
+
+function errorMessage(code: string | undefined, fallback: string): string {
+  if (!code) return fallback;
+  return ERROR_MESSAGES[code] ?? fallback;
+}
+
 function buildRecoverySiweMessage(args: {
   address: string;
   nonce: string;
@@ -72,7 +94,7 @@ export function WalletRecoveryFlow() {
         const body = (await response
           .json()
           .catch(() => ({}))) as RequestResponse;
-        throw new Error(body.error || "Recovery request failed.");
+        throw new Error(errorMessage(body.error, "Recovery request failed."));
       }
       setInfo(
         "If this email is on file, a 6-digit code is on its way. It expires in 10 minutes.",
@@ -99,7 +121,7 @@ export function WalletRecoveryFlow() {
         .catch(() => ({}))) as VerifyResponse;
       if (!response.ok || !body.recoveryToken) {
         throw new Error(
-          body.error || "We could not verify that code. Try again.",
+          errorMessage(body.error, "We could not verify that code. Try again."),
         );
       }
       setRecoveryToken(body.recoveryToken);
@@ -258,7 +280,7 @@ export function WalletRecoveryFlow() {
 interface RecoveryWalletStepProps {
   recoveryToken: string;
   onConfirmed: (address: string, lockedUntil: string | null) => void;
-  onError: (message: string) => void;
+  onError: (message: string | null) => void;
 }
 
 function RecoveryWalletStep({
@@ -300,7 +322,7 @@ function ConnectedRecoveryWalletStep({
   const handleSign = useCallback(async () => {
     if (!address) return;
     setBusy(true);
-    onError("");
+    onError(null);
     try {
       const challengeRes = await fetch("/api/auth/recovery/challenge", {
         method: "POST",
@@ -312,7 +334,10 @@ function ConnectedRecoveryWalletStep({
         .catch(() => ({}))) as ChallengeResponse;
       if (!challengeRes.ok || !challengeBody.nonce) {
         throw new Error(
-          challengeBody.error || "Could not start a recovery challenge.",
+          errorMessage(
+            challengeBody.error,
+            "Could not start a recovery challenge.",
+          ),
         );
       }
 
@@ -333,7 +358,7 @@ function ConnectedRecoveryWalletStep({
         .catch(() => ({}))) as ConfirmResponse;
       if (!confirmRes.ok || !confirmBody.walletAddress) {
         throw new Error(
-          confirmBody.error || "Recovery could not be confirmed.",
+          errorMessage(confirmBody.error, "Recovery could not be confirmed."),
         );
       }
       onConfirmed(
