@@ -166,6 +166,9 @@ function ConfiguredWalletSignInPrompt({
         ) : null}
       </div>
       {error ? <p className="inline-error">{error}</p> : null}
+      <p className="section-helper">
+        Lost your wallet? <a href="/recover">Recover with your verified email</a>.
+      </p>
     </div>
   );
 }
