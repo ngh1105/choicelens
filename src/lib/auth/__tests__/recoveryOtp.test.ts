@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    $transaction: vi.fn(),
     emailOtp: {
       count: vi.fn(),
       create: vi.fn(),
@@ -50,10 +51,15 @@ describe("issueOtp", () => {
   it("creates an EmailOtp row with hashed code and 10 minute TTL", async () => {
     vi.mocked(prisma.emailOtp.count).mockResolvedValue(0);
     const expiresAt = new Date("2026-05-28T00:10:00Z");
-    vi.mocked(prisma.emailOtp.create).mockResolvedValue({
+    vi.mocked(prisma.emailOtp.create).mockReturnValue({
       id: "otp_1",
       expiresAt,
     } as never);
+    vi.mocked(prisma.emailOtp.updateMany).mockReturnValue({ count: 1 } as never);
+    vi.mocked(prisma.$transaction).mockResolvedValue([
+      { id: "otp_1", expiresAt },
+      { count: 1 },
+    ] as never);
 
     const issued = await issueOtp({
       email: "alice@example.com",
@@ -74,6 +80,17 @@ describe("issueOtp", () => {
         codeHash: hashOtpCode(issued.code),
       }),
     });
+    expect(prisma.emailOtp.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          email: "alice@example.com",
+          userId: "user_1",
+          purpose: RECOVERY_OTP_PURPOSE,
+          consumedAt: null,
+        }),
+        data: { consumedAt: expect.any(Date) },
+      }),
+    );
   });
 
   it("throws otp_rate_limited when window is at capacity", async () => {

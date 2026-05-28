@@ -43,7 +43,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     return visitorJson(user, { recoveryEmail });
   } catch (err) {
     if (isAccountError(err)) {
-      return visitorJson(user, { error: err.code }, { status: 400 });
+      const status = err.code === "recovery_email_already_used" ? 409 : 400;
+      return visitorJson(user, { error: err.code }, { status });
     }
     console.error("POST /api/account/recovery-email failed", err);
     return visitorJson(user, { error: "internal_error" }, { status: 500 });

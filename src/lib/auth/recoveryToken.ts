@@ -35,14 +35,19 @@ function fromBase64url(input: string): Buffer {
 }
 
 function getSecret(): string {
-  const secret = process.env.WALLET_SESSION_SECRET?.trim();
-  if (secret) return secret;
+  const secret = process.env.WALLET_RECOVERY_TOKEN_SECRET?.trim();
+  if (secret) return `choicelens-wallet-recovery-v1:${secret}`;
+
+  const sessionSecret = process.env.WALLET_SESSION_SECRET?.trim();
+  if (sessionSecret) {
+    return `choicelens-wallet-recovery-v1:${sessionSecret}`;
+  }
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "WALLET_SESSION_SECRET is required in production for recovery tokens.",
+      "WALLET_RECOVERY_TOKEN_SECRET or WALLET_SESSION_SECRET is required in production for recovery tokens.",
     );
   }
-  return "dev-wallet-session-secret";
+  return "choicelens-wallet-recovery-v1:dev-wallet-session-secret";
 }
 
 function sign(payload: string): string {

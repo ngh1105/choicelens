@@ -44,6 +44,20 @@ describe("createRecoveryToken / parseRecoveryToken", () => {
     expect(parseRecoveryToken("notadottoken")).toBeNull();
   });
 
+  it("rejects tokens when recovery token secret changes", () => {
+    vi.stubEnv("WALLET_RECOVERY_TOKEN_SECRET", "specific-recovery-secret");
+    const token = createRecoveryToken({ userId, email, otpId });
+    vi.stubEnv("WALLET_RECOVERY_TOKEN_SECRET", "rotated");
+    expect(parseRecoveryToken(token)).toBeNull();
+  });
+
+  it("falls back to wallet session secret with recovery domain separation", () => {
+    vi.stubEnv("WALLET_RECOVERY_TOKEN_SECRET", "");
+    vi.stubEnv("WALLET_SESSION_SECRET", "session-secret");
+    const token = createRecoveryToken({ userId, email, otpId });
+    expect(parseRecoveryToken(token)?.userId).toBe(userId);
+  });
+
   it("rejects tokens signed with a different secret", () => {
     const token = createRecoveryToken({ userId, email, otpId });
     vi.stubEnv("WALLET_SESSION_SECRET", "rotated");

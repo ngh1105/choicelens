@@ -108,6 +108,23 @@ describe("account helpers", () => {
     });
   });
 
+  it("maps duplicate recovery email unique violations to AccountError", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      recoveryEmail: "old@example.com",
+    } as never);
+    vi.mocked(prisma.user.update).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+        meta: { target: ["recoveryEmail"] },
+      }),
+    );
+
+    await expect(
+      updateRecoveryEmail("user_1", "name@example.com"),
+    ).rejects.toMatchObject({ code: "recovery_email_already_used" });
+  });
+
   it("creates wallet change requests with a fresh nonce", async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.walletLinkRequest.create).mockResolvedValue({

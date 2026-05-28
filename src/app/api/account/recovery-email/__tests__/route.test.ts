@@ -105,6 +105,17 @@ describe("POST /api/account/recovery-email", () => {
     expect(await res.json()).toEqual({ error: "recovery_email_invalid" });
   });
 
+  it("maps recovery_email_already_used AccountError to 409", async () => {
+    vi.mocked(updateRecoveryEmail).mockRejectedValueOnce(
+      new AccountError("recovery_email_already_used", "Already used."),
+    );
+
+    const res = await POST(request({ recoveryEmail: "name@example.com" }));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "recovery_email_already_used" });
+  });
+
   it("returns 500 internal_error for unexpected updateRecoveryEmail failures", async () => {
     vi.mocked(updateRecoveryEmail).mockRejectedValueOnce(new Error("boom"));
 

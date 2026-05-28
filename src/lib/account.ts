@@ -24,6 +24,7 @@ export class AccountError extends Error {
   code:
     | "account_not_found"
     | "recovery_email_invalid"
+    | "recovery_email_already_used"
     | "wallet_session_required"
     | "wallet_invalid"
     | "wallet_already_linked"
@@ -128,12 +129,27 @@ export async function updateRecoveryEmail(
     data.recoveryEmailVerifiedAt = null;
   }
 
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data,
-    select: { recoveryEmail: true },
-  });
-  return user.recoveryEmail;
+  try {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data,
+      select: { recoveryEmail: true },
+    });
+    return user.recoveryEmail;
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002" &&
+      Array.isArray(err.meta?.target) &&
+      err.meta.target.includes("recoveryEmail")
+    ) {
+      throw new AccountError(
+        "recovery_email_already_used",
+        "Recovery email is already used by another account.",
+      );
+    }
+    throw err;
+  }
 }
 
 export async function createWalletChangeRequest(args: {
@@ -293,3 +309,4 @@ export async function confirmWalletChange(args: {
 export function isAccountError(value: unknown): value is AccountError {
   return value instanceof AccountError;
 }
+
