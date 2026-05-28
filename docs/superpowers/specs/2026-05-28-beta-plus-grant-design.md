@@ -71,6 +71,20 @@ Outcome:
    is off. Behaviorally idempotent: re-verifying as an existing Plus user
    writes `plan="plus"` again with no observable change. When billing is on,
    the field is absent and Stripe webhooks remain the only writer of `plan`.
+
+   **Conflict path:** the existing `wallet_change_required` (409) and
+   `wallet_already_linked` (409, including the `P2002` retry) branches
+   `return` before the `user.update`, so `plan` is never written when verify
+   fails. No additional handling needed.
+
+   **Stripe-paid user reconnecting in beta:** if a user with
+   `stripeCustomerId IS NOT NULL` but `plan="free"` (cancelled sub) connects
+   a wallet during beta, they are upgraded to Plus by the spread. This is
+   intentional under "beta is fully Free" framing — no one pays during beta.
+   The Section 7 rollback SQL (`stripeCustomerId IS NULL`) deliberately
+   leaves these users alone, which means a cancelled Stripe customer stays
+   on Plus after beta ends. Acceptable trade-off; revisit only if a
+   Stripe-paid cohort exists when beta ends.
 5. **`src/components/billing/PricingPlans.tsx`** — when `billingEnabled=false`:
    - Plus tile: keep "Free during beta" copy.
    - Replace `<Link href="/">Open app</Link>` with `<WalletSignInPrompt>` +
@@ -88,9 +102,11 @@ Vitest:
 
 - `usage.test.ts`: drop the "treats stored-free users as effective-Plus when
   BILLING_ENABLED=false" test (behavior removed). Keep the rest.
-- `siwe/verify` route test: add 2 cases —
+- `siwe/verify` route test: add 4 cases —
   - `BILLING_ENABLED=false` + visitor `plan="free"` → after verify, DB plan = `"plus"`.
   - `BILLING_ENABLED=true` + visitor `plan="free"` → after verify, DB plan = `"free"` (untouched).
+  - `BILLING_ENABLED=false` + visitor `plan="plus"` re-verifying same wallet → DB plan stays `"plus"` (idempotent, no error).
+  - `BILLING_ENABLED=false` + 409 conflict path (wallet already linked to another user) → DB plan unchanged for the rejecting visitor.
 - `PricingPlans.test.tsx`: update the `billingEnabled=false` case to assert
   `WalletSignInPrompt` renders + CTA copy.
 - `AccountSettings.test.tsx`: add 2 cases for the billing-off branch (plan=free vs plan=plus copy).
