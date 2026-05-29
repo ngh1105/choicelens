@@ -8,18 +8,14 @@ interface SentryShape {
 }
 
 declare global {
-  interface globalThis {
-    Sentry?: SentryShape;
-    __choicelensSentry?: SentryShape;
-  }
+  // eslint-disable-next-line no-var
+  var Sentry: SentryShape | undefined;
+  // eslint-disable-next-line no-var
+  var __choicelensSentry: SentryShape | undefined;
 }
 
 function getSentry(): SentryShape | null {
-  const g = globalThis as unknown as {
-    Sentry?: SentryShape;
-    __choicelensSentry?: SentryShape;
-  };
-  return g.__choicelensSentry ?? g.Sentry ?? null;
+  return globalThis.__choicelensSentry ?? globalThis.Sentry ?? null;
 }
 
 function getDrainUrl(): string | null {

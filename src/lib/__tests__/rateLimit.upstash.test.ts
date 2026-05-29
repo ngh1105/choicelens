@@ -69,7 +69,22 @@ describe("createUpstashRateLimitBackend", () => {
     expect(result.retryAfterSec).toBeGreaterThan(0);
   });
 
-  it("propagates upstream errors as Error", async () => {
+  it("surfaces upstream errors from the raw backend", async () => {
+    const fetchImpl: typeof fetch = async () =>
+      new Response("nope", { status: 500, statusText: "boom" });
+
+    const backend = createUpstashRateLimitBackend({
+      url: "https://example.upstash.io",
+      token: "tok",
+      fetchImpl,
+    });
+
+    await expect(
+      backend({ key: "k", limit: 10, windowMs: 1_000 }),
+    ).rejects.toThrow(/Upstash rate-limit pipeline failed/);
+  });
+
+  it("fails open at the apiRateLimit layer when the backend throws", async () => {
     const fetchImpl: typeof fetch = async () =>
       new Response("nope", { status: 500, statusText: "boom" });
 
@@ -81,13 +96,16 @@ describe("createUpstashRateLimitBackend", () => {
       }),
     );
 
-    await expect(
-      applyApiRateLimit(
-        new Request("http://test", {
-          headers: { "x-forwarded-for": "1.2.3.4" },
-        }),
-        { scope: "upstash:err", limit: 10, windowMs: 1_000 },
-      ),
-    ).rejects.toThrow(/Upstash rate-limit pipeline failed/);
+    const result = await applyApiRateLimit(
+      new Request("http://test", {
+        headers: { "x-forwarded-for": "1.2.3.4" },
+      }),
+      { scope: "upstash:err", limit: 10, windowMs: 1_000 },
+    );
+
+    // Defense in depth: a degraded Redis must never block requests.
+    expect(result.limited).toBe(false);
+    expect(result.remaining).toBe(10);
+    expect(result.retryAfterSec).toBe(0);
   });
 });

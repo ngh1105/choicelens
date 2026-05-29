@@ -83,11 +83,29 @@ export async function applyApiRateLimit(
   options: ApiRateLimitOptions,
 ): Promise<ApiRateLimitResult> {
   await maybeBootstrap();
-  const result = await backend({
-    key: buildKey(request, options),
-    limit: options.limit,
-    windowMs: options.windowMs,
-  });
+  let result: { limited: boolean; remaining: number; resetAt: number };
+  try {
+    result = await backend({
+      key: buildKey(request, options),
+      limit: options.limit,
+      windowMs: options.windowMs,
+    });
+  } catch (err) {
+    // Fail open: rate limiting is defense in depth, not a critical path. If the
+    // backend (e.g. Upstash REST) times out or 5xxs, never block the request —
+    // this matters most for auth/recovery flows, where a degraded Redis/log
+    // drain must not lock users out.
+    console.warn(
+      `[apiRateLimit] backend failed for scope "${options.scope}"; failing open`,
+      err,
+    );
+    return {
+      limited: false,
+      remaining: options.limit,
+      resetAt: Date.now() + options.windowMs,
+      retryAfterSec: 0,
+    };
+  }
   const retryAfterSec = Math.max(
     1,
     Math.ceil((result.resetAt - Date.now()) / 1000),
