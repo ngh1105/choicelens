@@ -47,7 +47,10 @@ describe("POST /api/auth/recovery/request", () => {
       }),
     );
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "invalid_json" });
+    expect(await res.json()).toEqual({
+      error: "invalid_json",
+      requestId: expect.any(String),
+    });
     expect(requestRecoveryOtp).not.toHaveBeenCalled();
   });
 

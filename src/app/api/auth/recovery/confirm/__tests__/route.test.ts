@@ -47,6 +47,7 @@ describe("POST /api/auth/recovery/confirm", () => {
     expect(await res.json()).toEqual({
       walletAddress: "0xnew",
       recoveryLockedUntil: "2026-05-29T00:00:00Z",
+      requestId: expect.any(String),
     });
     const setCookie = res.headers.get("set-cookie") ?? "";
     expect(setCookie).toContain(`${VISITOR_COOKIE_NAME}=`);
@@ -61,7 +62,10 @@ describe("POST /api/auth/recovery/confirm", () => {
       jsonRequest({ recoveryToken: "tok", message: "m", signature: "s" }),
     );
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "siwe_rejected" });
+    expect(await res.json()).toEqual({
+      error: "siwe_rejected",
+      requestId: expect.any(String),
+    });
   });
 
   it("maps wallet_already_linked to 409", async () => {
@@ -93,6 +97,9 @@ describe("POST /api/auth/recovery/confirm", () => {
       }),
     );
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "invalid_json" });
+    expect(await res.json()).toEqual({
+      error: "invalid_json",
+      requestId: expect.any(String),
+    });
   });
 });

@@ -7,6 +7,8 @@ import {
 } from "@/lib/auth/walletSession";
 import { VISITOR_COOKIE_NAME } from "@/lib/visitor";
 import { trackServerEvent } from "@/lib/analytics";
+import { applyApiRateLimit, rateLimitedResponse } from "@/lib/apiRateLimit";
+import { getRequestId, logRequestError } from "@/lib/requestLog";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +26,25 @@ function readPayload(value: unknown): ConfirmPayload {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const requestId = getRequestId(request);
+
+  // Per-IP throttle. Confirm runs SIWE signature verification and mutates
+  // wallet linkage, so it must be bounded against brute-force/replay bursts on
+  // top of the recovery-token's own lockout.
+  const limit = await applyApiRateLimit(request, {
+    scope: "auth:recovery:confirm",
+    limit: 10,
+    windowMs: 60 * 60 * 1000,
+  });
+  if (limit.limited) {
+    return rateLimitedResponse({ result: limit, requestId });
+  }
+
   let payload: unknown;
   try {
     payload = await request.json();
   } catch {
-    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+    return NextResponse.json({ error: "invalid_json", requestId }, { status: 400 });
   }
 
   const { recoveryToken, message, signature } = readPayload(payload);
@@ -39,6 +55,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const response = NextResponse.json({
       walletAddress: result.walletAddress,
       recoveryLockedUntil: result.recoveryLockedUntil,
+      requestId,
     });
 
     applyWalletSessionCookie(
@@ -66,7 +83,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return response;
   } catch (err) {
     if (isSiweAuthError(err)) {
-      return NextResponse.json({ error: err.code }, { status: 400 });
+      return NextResponse.json({ error: err.code, requestId }, { status: 400 });
     }
     if (isRecoveryError(err)) {
       const status =
@@ -75,9 +92,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           : err.code === "recovery_locked"
           ? 423
           : 400;
-      return NextResponse.json({ error: err.code }, { status });
+      return NextResponse.json({ error: err.code, requestId }, { status });
     }
-    console.error("POST /api/auth/recovery/confirm failed", err);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    logRequestError(requestId, "POST /api/auth/recovery/confirm failed", err);
+    return NextResponse.json({ error: "internal_error", requestId }, { status: 500 });
   }
 }
