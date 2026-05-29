@@ -53,28 +53,37 @@ export type RateLimitBackend = (
 };
 
 let backend: RateLimitBackend = checkInMemoryRateLimit;
-let bootstrapAttempted = false;
+let bootstrapPromise: Promise<void> | null = null;
 
-async function maybeBootstrap(): Promise<void> {
-  if (bootstrapAttempted) return;
-  bootstrapAttempted = true;
-  // Defer the import so test code that overrides the backend before the first
-  // call is not racing with this side-effect import.
-  try {
-    const mod = await import("@/lib/rateLimit.bootstrap");
-    mod.ensureSharedRateLimitBackend();
-  } catch {
-    // best effort; bootstrap is optional
+function maybeBootstrap(): Promise<void> {
+  // Cache the in-flight bootstrap promise so concurrent requests after a cold
+  // start all await the same import instead of racing. With a boolean flag the
+  // first request would flip it true and a second parallel request would skip
+  // the await, slipping through on the in-memory backend before the shared
+  // (Upstash) backend is installed. Deferring the import also lets test code
+  // override the backend first without racing this side-effect import.
+  if (!bootstrapPromise) {
+    bootstrapPromise = (async () => {
+      try {
+        const mod = await import("@/lib/rateLimit.bootstrap");
+        mod.ensureSharedRateLimitBackend();
+      } catch {
+        // best effort; bootstrap is optional
+      }
+    })();
   }
+  return bootstrapPromise;
 }
 
 export function setRateLimitBackend(next: RateLimitBackend): void {
-  bootstrapAttempted = true;
+  // Mark bootstrap as already settled so maybeBootstrap won't override this
+  // explicitly-provided backend (tests and manual wiring).
+  bootstrapPromise = Promise.resolve();
   backend = next;
 }
 
 export function resetRateLimitBackend(): void {
-  bootstrapAttempted = false;
+  bootstrapPromise = null;
   backend = checkInMemoryRateLimit;
 }
 
