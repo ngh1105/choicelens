@@ -46,6 +46,7 @@ describe("account helpers", () => {
       plan: "plus",
       primaryWalletAddress: "0xabc",
       recoveryEmail: "name@example.com",
+      recoveryEmailVerifiedAt: new Date("2026-05-26T00:00:00.000Z"),
       stripeCustomerId: "cus_123",
       stripeSubscriptionStatus: "active",
       stripeCurrentPeriodEnd: new Date("2026-06-01T00:00:00.000Z"),
@@ -56,6 +57,7 @@ describe("account helpers", () => {
       effectivePlan: "plus",
       primaryWalletAddress: "0xabc",
       recoveryEmail: "name@example.com",
+      recoveryEmailVerifiedAt: "2026-05-26T00:00:00.000Z",
       stripeCustomerId: "cus_123",
       stripeSubscriptionStatus: "active",
       stripeCurrentPeriodEnd: "2026-06-01T00:00:00.000Z",
@@ -68,7 +70,10 @@ describe("account helpers", () => {
     expect(() => parseRecoveryEmail("bad")).toThrow("Recovery email is invalid.");
   });
 
-  it("stores recovery email for the current user only", async () => {
+  it("stores recovery email and resets verification when it changes", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      recoveryEmail: "old@example.com",
+    } as never);
     vi.mocked(prisma.user.update).mockResolvedValue({
       recoveryEmail: "name@example.com",
     } as never);
@@ -78,9 +83,63 @@ describe("account helpers", () => {
     );
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: "user_1" },
+      data: {
+        recoveryEmail: "name@example.com",
+        recoveryEmailVerifiedAt: null,
+      },
+      select: { recoveryEmail: true },
+    });
+  });
+
+  it("keeps verification timestamp when recovery email is unchanged", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      recoveryEmail: "name@example.com",
+    } as never);
+    vi.mocked(prisma.user.update).mockResolvedValue({
+      recoveryEmail: "name@example.com",
+    } as never);
+
+    await updateRecoveryEmail("user_1", "name@example.com");
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "user_1" },
       data: { recoveryEmail: "name@example.com" },
       select: { recoveryEmail: true },
     });
+  });
+
+  it("maps duplicate recovery email unique violations to AccountError", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      recoveryEmail: "old@example.com",
+    } as never);
+    vi.mocked(prisma.user.update).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+        meta: { target: ["recoveryEmail"] },
+      }),
+    );
+
+    await expect(
+      updateRecoveryEmail("user_1", "name@example.com"),
+    ).rejects.toMatchObject({ code: "recovery_email_already_used" });
+  });
+
+  it("maps duplicate recovery email unique violations with string target", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      recoveryEmail: "old@example.com",
+    } as never);
+    vi.mocked(prisma.user.update).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+        meta: { target: "User_recoveryEmail_key" },
+      }),
+    );
+
+    await expect(
+      updateRecoveryEmail("user_1", "name@example.com"),
+    ).rejects.toMatchObject({ code: "recovery_email_already_used" });
   });
 
   it("creates wallet change requests with a fresh nonce", async () => {

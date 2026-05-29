@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  applyApiRateLimit,
+  rateLimitedResponse,
+} from "@/lib/apiRateLimit";
 import { getRequestUser } from "@/lib/request-user";
 import { prisma } from "@/lib/db";
 import {
@@ -30,6 +34,16 @@ export async function POST(request: Request): Promise<NextResponse> {
       { error: "wallet_session_required" },
       { status: 401 },
     );
+  }
+
+  const limit = await applyApiRateLimit(request, {
+    scope: "billing:checkout",
+    limit: 10,
+    windowMs: 60 * 60 * 1000,
+    identifier: requestUser.id,
+  });
+  if (limit.limited) {
+    return rateLimitedResponse({ result: limit });
   }
 
   try {

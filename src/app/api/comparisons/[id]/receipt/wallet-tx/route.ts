@@ -13,6 +13,7 @@ import {
   planLimitPayload,
 } from "@/lib/usage";
 import { visitorJson } from "@/lib/visitor";
+import { trackServerEvent } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,13 @@ export async function POST(
       receipt: { ...built, transactionHash, status: "pending" },
       submitterKind: "user",
       creatorAddress,
+    });
+    trackServerEvent("receipt_created", {
+      userId: visitor.id,
+      comparisonId: id,
+      receiptId: record.id,
+      submitterKind: "user",
+      status: record.status,
     });
     return visitorJson(visitor, { receipt: record }, { status: 201 });
   } catch (err) {

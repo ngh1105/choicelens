@@ -15,6 +15,12 @@ import {
   planLimitPayload,
 } from "@/lib/usage";
 import { visitorJson } from "@/lib/visitor";
+import { trackServerEvent } from "@/lib/analytics";
+import {
+  applyApiRateLimit,
+  rateLimitedResponse,
+} from "@/lib/apiRateLimit";
+import { getRequestId, logRequestError } from "@/lib/requestLog";
 
 export const dynamic = "force-dynamic";
 
@@ -96,20 +102,32 @@ export async function GET(request: Request): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const requestId = getRequestId(request);
   let visitor: RequestUser;
   let payload: unknown;
   try {
     visitor = await getRequestUser(request);
   } catch (err) {
-    console.error("POST /api/comparisons failed", err);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    logRequestError(requestId, "POST /api/comparisons failed", err);
+    return NextResponse.json({ error: "internal_error", requestId }, { status: 500 });
   }
+
+  const limit = await applyApiRateLimit(request, {
+    scope: "comparisons:create",
+    limit: 30,
+    windowMs: 60 * 60 * 1000,
+    identifier: visitor.id,
+  });
+  if (limit.limited) {
+    return rateLimitedResponse({ result: limit, requestId });
+  }
+
   try {
     payload = await request.json();
   } catch {
     return visitorJson(
       visitor,
-      { error: "invalid_json" },
+      { error: "invalid_json", requestId },
       { status: 400 },
     );
   }
@@ -117,23 +135,41 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (!input) {
     return visitorJson(
       visitor,
-      { error: "invalid_input", message: "At least 2 named options are required" },
+      {
+        error: "invalid_input",
+        message: "At least 2 named options are required",
+        requestId,
+      },
       { status: 400 },
     );
   }
   try {
     await assertWithinPlanLimit(visitor, "comparisons");
+    trackServerEvent("comparison_started", {
+      userId: visitor.id,
+      optionCount: input.options.length,
+      requestId,
+    });
     const result = runComparison(input);
     const record = await saveComparison(visitor.id, { input, result });
-    return visitorJson(visitor, { comparison: record }, { status: 201 });
+    trackServerEvent("comparison_completed", {
+      userId: visitor.id,
+      comparisonId: record.id,
+      optionCount: input.options.length,
+      topScore: result.topPick.finalScore,
+      requestId,
+    });
+    return visitorJson(visitor, { comparison: record, requestId }, { status: 201 });
   } catch (err) {
     if (err instanceof PlanLimitError) {
-      return visitorJson(visitor, planLimitPayload(err), { status: 402 });
+      return visitorJson(visitor, { ...planLimitPayload(err), requestId }, { status: 402 });
     }
-    console.error("POST /api/comparisons failed", err);
+    logRequestError(requestId, "POST /api/comparisons failed", err, {
+      userId: visitor.id,
+    });
     return visitorJson(
       visitor,
-      { error: "internal_error" },
+      { error: "internal_error", requestId },
       { status: 500 },
     );
   }

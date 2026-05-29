@@ -4,6 +4,10 @@ const tx = {
   comparison: {
     findFirst: vi.fn(),
   },
+  comparisonFeedback: {
+    create: vi.fn(),
+    upsert: vi.fn(),
+  },
   watchlistEntry: {
     findUnique: vi.fn(),
     create: vi.fn(),
@@ -34,6 +38,7 @@ import {
   addWatchlistEntry,
   getComparison,
   getReceiptForComparison,
+  saveComparisonFeedback,
   StoreError,
   updateReceiptStatus,
 } from "../store";
@@ -84,5 +89,50 @@ describe("store visitor ownership", () => {
       }),
     ).rejects.toBeInstanceOf(StoreError);
     expect(prisma.receipt.update).not.toHaveBeenCalled();
+  });
+
+  it("stores comparison feedback for an owned comparison", async () => {
+    tx.comparison.findFirst.mockResolvedValue({ id: "cmp1" });
+    tx.comparisonFeedback.upsert.mockResolvedValue({
+      id: "fb1",
+      comparisonId: "cmp1",
+      helpful: false,
+      createdAt: new Date("2026-05-28T00:00:00.000Z"),
+    });
+
+    await expect(
+      saveComparisonFeedback("user_a", { comparisonId: "cmp1", helpful: false }),
+    ).resolves.toEqual({
+      id: "fb1",
+      comparisonId: "cmp1",
+      helpful: false,
+      createdAt: "2026-05-28T00:00:00.000Z",
+    });
+    expect(tx.comparisonFeedback.upsert).toHaveBeenCalledWith({
+      where: {
+        comparisonId_userId: {
+          comparisonId: "cmp1",
+          userId: "user_a",
+        },
+      },
+      create: {
+        comparisonId: "cmp1",
+        userId: "user_a",
+        helpful: false,
+      },
+      update: {
+        helpful: false,
+      },
+    });
+  });
+
+  it("blocks comparison feedback for another visitor comparison", async () => {
+    await expect(
+      saveComparisonFeedback("user_a", { comparisonId: "cmp1", helpful: true }),
+    ).rejects.toMatchObject({
+      name: "StoreError",
+      code: "comparison_not_found",
+    });
+    expect(tx.comparisonFeedback.upsert).not.toHaveBeenCalled();
   });
 });

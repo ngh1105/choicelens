@@ -48,6 +48,7 @@ Required for full functionality (see `.env.example` for the full list):
 - [V2 Monetization Beta — design](docs/superpowers/specs/2026-05-23-monetization-beta-design.md)
   · [plan](docs/superpowers/plans/2026-05-23-monetization-beta.md)
   · [smoke runbook](docs/runbook/monetization-beta-smoke.md)
+- [Staging / prod-like smoke readiness checklist](docs/runbook/staging-prod-like-smoke-readiness.md)
 - [Architecture 01: Web2-First, Wallet-Optional](docs/architecture/01-web2-first-wallet-optional.md)
 - [Architecture 02: Wallet-First DApp](docs/architecture/02-wallet-first-dapp.md)
 - [Architecture 03: API-First Comparison Engine](docs/architecture/03-api-first-comparison-engine.md)

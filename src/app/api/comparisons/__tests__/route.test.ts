@@ -103,7 +103,7 @@ describe("POST /api/comparisons", () => {
     const res = await POST(postReq(input));
 
     expect(res.status).toBe(201);
-    expect(await res.json()).toEqual({ comparison: comparisonRecord });
+    expect(await res.json()).toMatchObject({ comparison: comparisonRecord });
     expect(usage.assertWithinPlanLimit).toHaveBeenCalledWith(
       expect.objectContaining(visitor),
       "comparisons",
@@ -133,7 +133,7 @@ describe("POST /api/comparisons", () => {
     const res = await POST(postReq(input));
 
     expect(res.status).toBe(402);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       error: "plan_limit_reached",
       feature: "comparisons",
       message: "Free plan includes 20 comparisons.",

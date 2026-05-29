@@ -188,31 +188,63 @@ again.
    The server must reject the stale confirmation with
    `wallet_change_not_found`.
 
-## 5. Security and idempotency checks
+## 5. Local-safe readiness check
+
+Before using Stripe test-mode credentials, run the repository-only readiness
+check. It does not call Stripe, does not require secrets, and fails if a live
+Stripe secret is present in the shell environment:
+
+```bash
+npm run stripe:smoke:readiness
+```
+
+The check verifies that the billing routes, webhook idempotency/retry code,
+required env documentation, migration, and this runbook are present. Passing
+this check is not a substitute for the external Stripe smoke below; it is a
+preflight guard before entering test secrets or touching the dashboard.
+
+## 6. Security and idempotency checks
 
 Before declaring the slice production-ready:
 
 1. **Webhook signature failure path.** Send a malformed body or wrong
    signature to `/api/billing/webhook`. The server must respond `400
    invalid_signature` and write nothing to `StripeWebhookEvent`.
-2. **Replay safety.** Use `stripe events resend <evt_...>` against an event
+2. **Webhook replay safety.** Use `stripe events resend <evt_...>` against an event
    that already processed. The second call must return `duplicate: true`
    and `User.plan` must not move.
-3. **Visitor isolation.** A request without `cl_wallet_session` must never
+3. **Subscription update/delete.** In the test subscription, trigger or wait for
+   both `customer.subscription.updated` and `customer.subscription.deleted` paths:
+   - Update: cancel at period end, resume, or change quantity/price in Stripe's
+     test dashboard/portal. Confirm active or trialing Plus-price subscriptions
+     keep `User.plan = 'plus'`, while `past_due`, `unpaid`, and other inactive
+     statuses write `User.plan = 'free'`.
+   - Delete: fully cancel/delete the test subscription. Confirm
+     `stripeSubscriptionStatus` is preserved as `canceled` or another known
+     free status, and `User.plan = 'free'`.
+4. **Downgrade/cancel timing.** A `cancel_at_period_end` subscription can still
+   be `active`; do not expect downgrade until Stripe sends an inactive status or
+   deleted event. Record the event id that actually flipped the plan.
+5. **Failed webhook recovery.** If a row in `StripeWebhookEvent` is `failed`, fix
+   the downstream cause, then use `stripe events resend <evt_...>`. The retry
+   should move the row through `processing` to `processed`. If a row is stuck in
+   `processing` for more than 5 minutes, resending the same event should also be
+   accepted for reprocessing.
+6. **Visitor isolation.** A request without `cl_wallet_session` must never
    succeed at `/api/billing/checkout`, `/api/billing/portal`,
    `/api/account/recovery-email`, or the wallet-change routes. Expect
    `401 wallet_session_required`.
-4. **Wallet conflict.** Linking a wallet that already belongs to a
+7. **Wallet conflict.** Linking a wallet that already belongs to a
    different `User` row must return `409 wallet_already_linked`. The
    existing user's data must remain intact.
-5. **Cookie hardening.** Production responses must set `cl_wallet_session`
+8. **Cookie hardening.** Production responses must set `cl_wallet_session`
    with `Secure`, `HttpOnly`, and `SameSite=Lax`. Inspect with browser
    devtools or `curl -i`.
-6. **No prompt leakage.** Stripe customer/subscription metadata must only
+9. **No prompt leakage.** Stripe customer/subscription metadata must only
    contain `userId` and `walletAddress`. Confirm by reading a fresh
    customer in the Stripe Dashboard.
 
-## 6. Production rollout
+## 7. Production rollout
 
 Order matters; do not skip steps.
 
@@ -230,7 +262,7 @@ Order matters; do not skip steps.
    throwaway wallet, then immediately cancel through the portal.
 6. Confirm `User.plan` returns to `free` on cancellation.
 
-## 7. Rollback
+## 8. Rollback
 
 The slice is structured so a rollback does not require a destructive
 migration:
@@ -245,7 +277,7 @@ migration:
   Stripe Dashboard. Do not edit `User.plan` manually except as a last
   resort, and only after the subscription is canceled in Stripe.
 
-## 8. Known follow-ups (not in this slice)
+## 9. Known follow-ups (not in this slice)
 
 These are intentionally out of scope for the beta and tracked separately:
 

@@ -14,6 +14,7 @@ export interface AccountSummary {
   effectivePlan: PlanId;
   primaryWalletAddress: string | null;
   recoveryEmail: string | null;
+  recoveryEmailVerifiedAt: string | null;
   stripeCustomerId: string | null;
   stripeSubscriptionStatus: string | null;
   stripeCurrentPeriodEnd: string | null;
@@ -23,6 +24,7 @@ export class AccountError extends Error {
   code:
     | "account_not_found"
     | "recovery_email_invalid"
+    | "recovery_email_already_used"
     | "wallet_session_required"
     | "wallet_invalid"
     | "wallet_already_linked"
@@ -44,6 +46,7 @@ function formatAccountSummary(user: {
   plan: string;
   primaryWalletAddress: string | null;
   recoveryEmail: string | null;
+  recoveryEmailVerifiedAt: Date | null;
   stripeCustomerId: string | null;
   stripeSubscriptionStatus: string | null;
   stripeCurrentPeriodEnd: Date | null;
@@ -54,6 +57,7 @@ function formatAccountSummary(user: {
     effectivePlan: plan,
     primaryWalletAddress: user.primaryWalletAddress,
     recoveryEmail: user.recoveryEmail,
+    recoveryEmailVerifiedAt: toIso(user.recoveryEmailVerifiedAt),
     stripeCustomerId: user.stripeCustomerId,
     stripeSubscriptionStatus: user.stripeSubscriptionStatus,
     stripeCurrentPeriodEnd: toIso(user.stripeCurrentPeriodEnd),
@@ -67,6 +71,7 @@ export async function getAccountSummary(userId: string): Promise<AccountSummary>
       plan: true,
       primaryWalletAddress: true,
       recoveryEmail: true,
+      recoveryEmailVerifiedAt: true,
       stripeCustomerId: true,
       stripeSubscriptionStatus: true,
       stripeCurrentPeriodEnd: true,
@@ -101,17 +106,65 @@ export function parseRecoveryEmail(value: unknown): string | null {
   return trimmed;
 }
 
+function isRecoveryEmailUniqueViolation(
+  err: Prisma.PrismaClientKnownRequestError,
+): boolean {
+  if (err.code !== "P2002") return false;
+  const target = err.meta?.target;
+  if (Array.isArray(target)) {
+    return target.includes("recoveryEmail");
+  }
+  if (typeof target === "string") {
+    return (
+      target.includes("recoveryEmail") ||
+      target.includes("User_recoveryEmail_key")
+    );
+  }
+  return false;
+}
+
 export async function updateRecoveryEmail(
   userId: string,
   value: unknown,
 ): Promise<string | null> {
   const recoveryEmail = parseRecoveryEmail(value);
-  const user = await prisma.user.update({
+  const current = await prisma.user.findUnique({
     where: { id: userId },
-    data: { recoveryEmail },
     select: { recoveryEmail: true },
   });
-  return user.recoveryEmail;
+  if (!current) {
+    throw new AccountError("account_not_found", "Account was not found.");
+  }
+
+  // Reset verification when the email actually changes (or is cleared).
+  // Setting the same email back keeps the existing verifiedAt timestamp.
+  const data: {
+    recoveryEmail: string | null;
+    recoveryEmailVerifiedAt?: Date | null;
+  } = { recoveryEmail };
+  if (current.recoveryEmail !== recoveryEmail) {
+    data.recoveryEmailVerifiedAt = null;
+  }
+
+  try {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data,
+      select: { recoveryEmail: true },
+    });
+    return user.recoveryEmail;
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      isRecoveryEmailUniqueViolation(err)
+    ) {
+      throw new AccountError(
+        "recovery_email_already_used",
+        "Recovery email is already used by another account.",
+      );
+    }
+    throw err;
+  }
 }
 
 export async function createWalletChangeRequest(args: {

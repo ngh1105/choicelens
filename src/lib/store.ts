@@ -30,6 +30,13 @@ export interface ReceiptRecord extends DecisionReceipt {
   updatedAt: string;
 }
 
+export interface ComparisonFeedbackRecord {
+  id: string;
+  comparisonId: string;
+  helpful: boolean;
+  createdAt: string;
+}
+
 export class StoreError extends Error {
   code: string;
   constructor(code: string, message: string) {
@@ -96,6 +103,13 @@ type DbReceipt = {
   updatedAt: Date;
 };
 
+type DbComparisonFeedback = {
+  id: string;
+  comparisonId: string;
+  helpful: boolean;
+  createdAt: Date;
+};
+
 function toComparison(row: DbComparison): ComparisonRecord {
   return {
     id: row.id,
@@ -132,6 +146,17 @@ function toReceipt(row: DbReceipt): ReceiptRecord {
     errorCode: row.errorCode,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function toComparisonFeedback(
+  row: DbComparisonFeedback,
+): ComparisonFeedbackRecord {
+  return {
+    id: row.id,
+    comparisonId: row.comparisonId,
+    helpful: row.helpful,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -239,6 +264,41 @@ export async function removeWatchlistEntry(
   return result.count > 0;
 }
 
+export async function saveComparisonFeedback(
+  userId: string,
+  args: {
+    comparisonId: string;
+    helpful: boolean;
+  }
+): Promise<ComparisonFeedbackRecord> {
+  const row = await serializable(async (tx) => {
+    const comparison = await tx.comparison.findFirst({
+      where: { id: args.comparisonId, userId },
+      select: { id: true },
+    });
+    if (!comparison) {
+      throw new StoreError("comparison_not_found", "Comparison not found");
+    }
+    return tx.comparisonFeedback.upsert({
+      where: {
+        comparisonId_userId: {
+          comparisonId: comparison.id,
+          userId,
+        },
+      },
+      create: {
+        comparisonId: comparison.id,
+        userId,
+        helpful: args.helpful,
+      },
+      update: {
+        helpful: args.helpful,
+      },
+    });
+  });
+  return toComparisonFeedback(row);
+}
+
 export async function saveReceipt(
   userId: string,
   args: {
@@ -248,7 +308,7 @@ export async function saveReceipt(
     creatorAddress?: string | null;
     executionResult?: string | null;
     errorCode?: string | null;
-  },
+  }
 ): Promise<ReceiptRecord> {
   const r = args.receipt;
   const creatorAddress = args.creatorAddress ?? null;

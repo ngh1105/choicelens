@@ -26,6 +26,7 @@ const userRecord = {
   walletLinkedAt: null,
   recoveryEmail: null,
   recoveryEmailVerifiedAt: null,
+  recoveryLockedUntil: null,
   stripeCustomerId: null,
   stripeSubscriptionId: null,
   stripePriceId: null,

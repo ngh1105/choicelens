@@ -61,7 +61,10 @@ describe("POST /api/billing/portal", () => {
     const res = await POST(new Request("http://test/api/billing/portal"));
 
     expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: "wallet_session_required" });
+    expect(await res.json()).toEqual({
+      error: "wallet_session_required",
+      requestId: expect.any(String),
+    });
     expect(portalCreate).not.toHaveBeenCalled();
   });
 
@@ -73,7 +76,10 @@ describe("POST /api/billing/portal", () => {
     const res = await POST(new Request("http://test/api/billing/portal"));
 
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "billing_portal_unavailable" });
+    expect(await res.json()).toEqual({
+      error: "billing_portal_unavailable",
+      requestId: expect.any(String),
+    });
     expect(portalCreate).not.toHaveBeenCalled();
   });
 
@@ -81,7 +87,10 @@ describe("POST /api/billing/portal", () => {
     const res = await POST(new Request("http://test/api/billing/portal"));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ url: "https://stripe.test/portal" });
+    expect(await res.json()).toEqual({
+      url: "https://stripe.test/portal",
+      requestId: expect.any(String),
+    });
     expect(portalCreate).toHaveBeenCalledWith({
       customer: "cus_123",
       return_url: "https://choice.test/account",
@@ -94,7 +103,10 @@ describe("POST /api/billing/portal", () => {
     const res = await POST(new Request("http://test/api/billing/portal"));
 
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: "internal_error" });
+    expect(await res.json()).toEqual({
+      error: "internal_error",
+      requestId: expect.any(String),
+    });
     expect(portalCreate).not.toHaveBeenCalled();
   });
 
@@ -104,7 +116,10 @@ describe("POST /api/billing/portal", () => {
     const res = await POST(new Request("http://test/api/billing/portal"));
 
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: "billing_portal_unavailable" });
+    expect(await res.json()).toEqual({
+      error: "billing_portal_unavailable",
+      requestId: expect.any(String),
+    });
   });
 
   it("returns 503 billing_disabled when BILLING_ENABLED=false", async () => {
@@ -113,7 +128,10 @@ describe("POST /api/billing/portal", () => {
       const res = await POST(new Request("http://test/api/billing/portal"));
 
       expect(res.status).toBe(503);
-      expect(await res.json()).toEqual({ error: "billing_disabled" });
+      expect(await res.json()).toEqual({
+        error: "billing_disabled",
+        requestId: expect.any(String),
+      });
       expect(portalCreate).not.toHaveBeenCalled();
     } finally {
       delete process.env.BILLING_ENABLED;
